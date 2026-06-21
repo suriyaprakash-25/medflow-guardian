@@ -1,0 +1,128 @@
+[
+  {
+    "prescriptionId": "RX101",
+    "patientId": "P001",
+    "doctorId": "DOC100",
+    "doctorName": "Dr. Paul Card",
+    "medications": ["Atorvastatin", "Metoprolol"],
+    "claimAmount": 40.0,
+    "prescribedDate": "2026-05-15"
+  },
+  {
+    "prescriptionId": "RX102",
+    "patientId": "P001",
+    "doctorId": "DOC100",
+    "doctorName": "Dr. Paul Card",
+    "medications": ["Atorvastatin", "Metoprolol"],
+    "claimAmount": 40.0,
+    "prescribedDate": "2026-06-15"
+  },
+  {
+    "prescriptionId": "RX201",
+    "patientId": "P002",
+    "doctorId": "DOC200",
+    "doctorName": "Dr. Alice Green",
+    "medications": ["Warfarin"],
+    "claimAmount": 50.0,
+    "prescribedDate": "2026-06-01"
+  },
+  {
+    "prescriptionId": "RX301",
+    "patientId": "P003",
+    "doctorId": "DOC300",
+    "doctorName": "Dr. Alan Adams",
+    "medications": ["Metoprolol"],
+    "claimAmount": 45.0,
+    "prescribedDate": "2026-05-01"
+  },
+  {
+    "prescriptionId": "RX302",
+    "patientId": "P003",
+    "doctorId": "DOC300",
+    "doctorName": "Dr. Alan Adams",
+    "medications": ["Lisinopril"],
+    "claimAmount": 55.0,
+    "prescribedDate": "2026-05-15"
+  },
+  {
+    "prescriptionId": "RX303",
+    "patientId": "P003",
+    "doctorId": "DOC300",
+    "doctorName": "Dr. Alan Adams",
+    "medications": ["Atorvastatin"],
+    "claimAmount": 50.0,
+    "prescribedDate": "2026-06-01"
+  },
+  {
+    "prescriptionId": "RX304",
+    "patientId": "P003",
+    "doctorId": "DOC301",
+    "doctorName": "Dr. Brenda Baker",
+    "medications": ["Ibuprofen"],
+    "claimAmount": 15.0,
+    "prescribedDate": "2026-06-01"
+  },
+  {
+    "prescriptionId": "RX305",
+    "patientId": "P003",
+    "doctorId": "DOC302",
+    "doctorName": "Dr. Charlie Carter",
+    "medications": ["Ibuprofen"],
+    "claimAmount": 15.0,
+    "prescribedDate": "2026-06-10"
+  },
+  {
+    "prescriptionId": "RX306",
+    "patientId": "P003",
+    "doctorId": "DOC303",
+    "doctorName": "Dr. Diana Davis",
+    "medications": ["Ibuprofen"],
+    "claimAmount": 15.0,
+    "prescribedDate": "2026-06-18"
+  },
+  {
+    "prescriptionId": "RX307",
+    "patientId": "P003",
+    "doctorId": "DOC304",
+    "doctorName": "Dr. Ethan Evans",
+    "medications": ["Codeine"],
+    "claimAmount": 30.0,
+    "prescribedDate": "2026-06-05"
+  },
+  {
+    "prescriptionId": "RX308",
+    "patientId": "P003",
+    "doctorId": "DOC304",
+    "doctorName": "Dr. Ethan Evans",
+    "medications": ["Codeine"],
+    "claimAmount": 30.0,
+    "prescribedDate": "2026-06-08"
+  },
+  {
+    "prescriptionId": "RX309",
+    "patientId": "P003",
+    "doctorId": "DOC304",
+    "doctorName": "Dr. Ethan Evans",
+    "medications": ["Codeine"],
+    "claimAmount": 30.0,
+    "prescribedDate": "2026-06-11"
+  },
+  {
+    "prescriptionId": "RX310",
+    "patientId": "P003",
+    "doctorId": "DOC300",
+    "doctorName": "Dr. Alan Adams",
+    "medications": ["Codeine"],
+    "claimAmount": 250.0,
+    "prescribedDate": "2026-06-19"
+  },
+  {
+    "prescriptionId": "RX311",
+    "patientId": "P003",
+    "doctorId": "DOC300",
+    "doctorName": "Dr. Alan Adams",
+    "medications": ["Oxycodone"],
+    "claimAmount": 60.0,
+    "prescribedDate": "2026-06-20"
+  }
+]

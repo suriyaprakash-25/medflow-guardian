@@ -1,0 +1,20 @@
+[
+  {
+    "patientId": "P001",
+    "name": "David Miller",
+    "allergies": [],
+    "currentMedications": ["Atorvastatin", "Metoprolol"]
+  },
+  {
+    "patientId": "P002",
+    "name": "Jane Smith",
+    "allergies": ["Penicillin"],
+    "currentMedications": ["Warfarin", "Ibuprofen"]
+  },
+  {
+    "patientId": "P003",
+    "name": "Bob Johnson",
+    "allergies": [],
+    "currentMedications": ["Codeine"]
+  }
+]
