@@ -8,20 +8,21 @@ Built for the 2026 Healthcare Hackathon.
 
 ## 🏗️ Architecture Overview
 
-MedFlow Guardian follows a **monorepo** layout with three independent applications that communicate through a shared backend API.
+MedFlow Guardian follows a **monorepo** layout with two independent frontend web applications that communicate through a shared backend API and WebSocket hub.
 
 ```
 medflow/
-├── patient-app/       # React Native (Expo) — mobile app for patients
+├── patient-app/       # React + Vite — web dashboard for patients
 ├── doctor-portal/     # React + Vite — web dashboard for doctors
-├── backend/           # FastAPI (Python) — REST API, AI services, data layer
+├── backend/           # FastAPI (Python) — REST API, WebSockets, AI, data layer
 │   └── app/
 │       ├── api/       # Route definitions & request handlers
-│       ├── models/    # Pydantic schemas & database models
-│       ├── services/  # Business logic & integrations
-│       ├── ai/        # AI/ML inference modules
+│       ├── models/    # SQLAlchemy ORM models
+│       ├── schemas/   # Pydantic schemas
+│       ├── core/      # Config, security, DB connections
+│       ├── ai/        # AI/ML triage engine
 │       └── main.py    # FastAPI application entry point
-└── docs/              # Documentation, ADRs, diagrams
+└── docs/              # Documentation, ADRs, diagrams, demo guides
 ```
 
 ### Data Flow
@@ -29,15 +30,15 @@ medflow/
 ```
 ┌──────────────┐        HTTPS / WSS        ┌───────────────┐
 │  Patient App │  ◄──────────────────────►  │   FastAPI      │
-│  (Expo/RN)   │                            │   Backend      │
+│ (React+Vite) │                            │   Backend      │
 └──────────────┘                            │                │
                                             │  ┌──────────┐  │
-┌──────────────┐        HTTPS / WSS        │  │ AI / ML  │  │
+┌──────────────┐        HTTPS / WSS        │  │ AI Triage│  │
 │ Doctor Portal│  ◄──────────────────────►  │  │ Engine   │  │
-│  (React+Vite)│                            │  └──────────┘  │
+│ (React+Vite) │                            │  └──────────┘  │
 └──────────────┘                            │                │
                                             │  ┌──────────┐  │
-                                            │  │ Database │  │
+                                            │  │  SQLite  │  │
                                             │  └──────────┘  │
                                             └───────────────┘
 ```
@@ -48,12 +49,12 @@ medflow/
 
 | Layer          | Technology                          |
 | -------------- | ----------------------------------- |
-| Patient App    | React Native, Expo, TypeScript      |
-| Doctor Portal  | React, Vite, TypeScript             |
-| Backend API    | Python, FastAPI, Pydantic           |
-| AI / ML        | (TBD — pluggable module in `app/ai`)  |
-| Database       | (TBD — Postgres / Supabase / Firebase) |
-| Auth           | (TBD)                               |
+| Patient App    | React, Vite, TypeScript, Axios      |
+| Doctor Portal  | React, Vite, TypeScript, Axios      |
+| Backend API    | Python, FastAPI, Pydantic, WebSockets|
+| AI / ML        | Keyword-based Mock (Hackathon MVP)  |
+| Database       | SQLite (via SQLAlchemy & Alembic)   |
+| Auth           | JWT (JSON Web Tokens)               |
 
 ---
 
@@ -63,65 +64,37 @@ medflow/
 
 - **Node.js** ≥ 18
 - **Python** ≥ 3.10
-- **npm** (ships with Node)
 
-### 1. Patient App (React Native / Expo)
-
-```bash
-cd patient-app
-npm install
-npx expo start        # launches the Expo dev server
-```
-
-### 2. Doctor Portal (React + Vite)
-
-```bash
-cd doctor-portal
-npm install
-npm run dev            # http://localhost:5173
-```
-
-### 3. Backend (FastAPI)
+### 1. Backend (FastAPI)
 
 ```bash
 cd backend
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS / Linux:
-# source .venv/bin/activate
-
+.\.venv\Scripts\activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload   # http://localhost:8000
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 ```
+API runs on `http://localhost:8080`.
 
-API docs are auto-generated at [http://localhost:8000/docs](http://localhost:8000/docs) (Swagger UI).
+### 2. Patient App (React + Vite)
 
----
+```bash
+cd patient-app
+npm install
+npm run dev -- --port 5174
+```
+Runs on `http://localhost:5174`.
 
-## 🗂️ Project Structure Details
+### 3. Doctor Portal (React + Vite)
 
-### `patient-app/`
-Expo-managed React Native app bootstrapped with the **blank-typescript** template. Targets iOS, Android, and web.
-
-### `doctor-portal/`
-Vite-powered React SPA using the **react-ts** template. Intended as a desktop-first dashboard for clinicians.
-
-### `backend/`
-FastAPI server exposing a REST + WebSocket API.
-
-| Sub-package | Purpose |
-|-------------|---------|
-| `app/api/`      | Route modules (one file per resource/domain) |
-| `app/models/`   | Pydantic request/response schemas & ORM models |
-| `app/services/` | Business logic, third-party integrations |
-| `app/ai/`       | AI/ML inference wrappers (triage, NLP, etc.) |
-
-### `docs/`
-Architecture Decision Records, API specs, and design documents.
+```bash
+cd doctor-portal
+npm install
+npm run dev -- --port 5175
+```
+Runs on `http://localhost:5175`.
 
 ---
 
-## 📝 License
-
-TBD — to be decided by the team.
+## 📖 Further Reading
+- [End-to-End Demo Guide](docs/DEMO_GUIDE.md)
