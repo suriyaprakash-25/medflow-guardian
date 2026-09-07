@@ -8,6 +8,7 @@ from app.models.user import User
 from app.schemas.monitoring import PatientReadingCreate, PatientReading as PatientReadingSchema
 from app.schemas.monitoring import MessageCreate, Message as MessageSchema
 from app.api.dependencies import get_current_patient, get_current_doctor, get_current_user
+from app.models.hospital import Visit
 from app.api.websockets import manager
 
 router = APIRouter()
@@ -52,6 +53,14 @@ def get_readings(
     db: Session = Depends(get_db),
     current_doctor: User = Depends(get_current_doctor)
 ):
+    # Verify relationship
+    visit = db.query(Visit).filter(
+        Visit.patient_id == patient_id,
+        Visit.doctor_id == current_doctor.id
+    ).first()
+    if not visit:
+        raise HTTPException(status_code=403, detail="Not authorized to view readings for this patient")
+
     return db.query(PatientReading).filter(PatientReading.patient_id == patient_id).order_by(PatientReading.created_at.desc()).limit(50).all()
 
 @router.get("/readings/patient", response_model=List[PatientReadingSchema])
@@ -67,6 +76,15 @@ async def send_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Verify they have a relationship
+    if current_user.role == "patient":
+        visit = db.query(Visit).filter(Visit.patient_id == current_user.id, Visit.doctor_id == msg_in.receiver_id).first()
+    else:
+        visit = db.query(Visit).filter(Visit.patient_id == msg_in.receiver_id, Visit.doctor_id == current_user.id).first()
+
+    if not visit:
+        raise HTTPException(status_code=403, detail="Not authorized to message this user")
+
     db_msg = Message(
         sender_id=current_user.id,
         receiver_id=msg_in.receiver_id,
@@ -96,6 +114,15 @@ def get_messages(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
+    # Verify relationship
+    if current_user.role == "patient":
+        visit = db.query(Visit).filter(Visit.patient_id == current_user.id, Visit.doctor_id == user_id).first()
+    else:
+        visit = db.query(Visit).filter(Visit.patient_id == user_id, Visit.doctor_id == current_user.id).first()
+
+    if not visit:
+        raise HTTPException(status_code=403, detail="Not authorized to view messages with this user")
+
     # Fetch chat history between current_user and user_id
     messages = db.query(Message).filter(
         ((Message.sender_id == current_user.id) & (Message.receiver_id == user_id)) |

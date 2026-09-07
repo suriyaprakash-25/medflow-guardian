@@ -15,6 +15,11 @@ class User(Base):
     patient_profile = relationship("PatientProfile", back_populates="user", uselist=False, foreign_keys="PatientProfile.user_id")
     assigned_patients = relationship("PatientProfile", back_populates="assigned_doctor", foreign_keys="PatientProfile.assigned_doctor_id")
     triage_requests = relationship("TriageRequest", back_populates="patient", foreign_keys="TriageRequest.patient_id")
+    
+    # New relationships for Multi-Hospital structure
+    hospital_affiliations = relationship("HospitalStaff", back_populates="user", cascade="all, delete-orphan")
+    visits_as_patient = relationship("Visit", back_populates="patient", foreign_keys="Visit.patient_id", cascade="all, delete-orphan")
+    visits_as_doctor = relationship("Visit", back_populates="doctor", foreign_keys="Visit.doctor_id")
 
 class PatientProfile(Base):
     __tablename__ = "patient_profiles"
