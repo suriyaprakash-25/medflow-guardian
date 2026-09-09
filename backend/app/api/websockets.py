@@ -11,15 +11,18 @@ class ConnectionManager:
     def __init__(self):
         # Maps user_id -> List[WebSocket]
         self.active_connections: Dict[int, List[WebSocket]] = {}
-        # Track roles for broadcasting
+        # Track roles and hospitals for broadcasting
         self.user_roles: Dict[int, str] = {}
+        self.user_hospitals: Dict[int, List[int]] = {}
 
-    async def connect(self, websocket: WebSocket, user_id: int, role: str):
+    async def connect(self, websocket: WebSocket, user_id: int, role: str, hospital_ids: List[int] = None):
         await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
         self.user_roles[user_id] = role
+        if hospital_ids is not None:
+            self.user_hospitals[user_id] = hospital_ids
 
     def disconnect(self, websocket: WebSocket, user_id: int):
         if user_id in self.active_connections:
@@ -29,6 +32,8 @@ class ConnectionManager:
                 del self.active_connections[user_id]
                 if user_id in self.user_roles:
                     del self.user_roles[user_id]
+                if user_id in self.user_hospitals:
+                    del self.user_hospitals[user_id]
 
     async def send_personal_message(self, message: dict, user_id: int):
         if user_id in self.active_connections:
@@ -41,6 +46,15 @@ class ConnectionManager:
                 if user_id in self.active_connections:
                     for connection in self.active_connections[user_id]:
                         await connection.send_json(message)
+
+    async def broadcast_to_hospital(self, message: dict, role: str, hospital_id: int):
+        for user_id, user_role in self.user_roles.items():
+            if user_role == role:
+                user_hospitals = self.user_hospitals.get(user_id, [])
+                if hospital_id in user_hospitals:
+                    if user_id in self.active_connections:
+                        for connection in self.active_connections[user_id]:
+                            await connection.send_json(message)
 
     async def broadcast_to_all(self, message: dict):
         for user_id, connections in self.active_connections.items():
@@ -70,7 +84,18 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
         await websocket.close(code=1008)
         return
         
-    await manager.connect(websocket, user.id, user.role)
+    db = SessionLocal()
+    hospital_ids = []
+    if user.role in ["doctor", "admin"]:
+        from app.models.hospital import HospitalStaff
+        affiliations = db.query(HospitalStaff).filter(
+            HospitalStaff.user_id == user.id,
+            HospitalStaff.is_active == True
+        ).all()
+        hospital_ids = [aff.hospital_id for aff in affiliations]
+    db.close()
+
+    await manager.connect(websocket, user.id, user.role, hospital_ids)
     try:
         while True:
             data = await websocket.receive_text()

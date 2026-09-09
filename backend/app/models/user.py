@@ -13,8 +13,26 @@ class User(Base):
     is_active = Column(Boolean, default=True)
 
     patient_profile = relationship("PatientProfile", back_populates="user", uselist=False, foreign_keys="PatientProfile.user_id")
+    practitioner_profile = relationship("PractitionerProfile", back_populates="user", uselist=False, foreign_keys="PractitionerProfile.user_id")
     assigned_patients = relationship("PatientProfile", back_populates="assigned_doctor", foreign_keys="PatientProfile.assigned_doctor_id")
     triage_requests = relationship("TriageRequest", back_populates="patient", foreign_keys="TriageRequest.patient_id")
+    
+    # New relationships for Multi-Hospital structure
+    hospital_affiliations = relationship("HospitalStaff", back_populates="user", cascade="all, delete-orphan")
+    visits_as_patient = relationship("Visit", back_populates="patient", foreign_keys="Visit.patient_id", cascade="all, delete-orphan")
+    visits_as_doctor = relationship("Visit", back_populates="doctor", foreign_keys="Visit.doctor_id")
+
+class PractitionerProfile(Base):
+    __tablename__ = "practitioner_profiles"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
+    specialty = Column(String, nullable=True)
+    license_number = Column(String, nullable=True)
+    bio = Column(String, nullable=True)
+    is_verified = Column(Boolean, default=False)
+
+    user = relationship("User", back_populates="practitioner_profile", foreign_keys=[user_id])
 
 class PatientProfile(Base):
     __tablename__ = "patient_profiles"
