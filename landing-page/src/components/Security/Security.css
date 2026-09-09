@@ -1,0 +1,99 @@
+.security-section {
+  background-color: var(--color-slate-900);
+  color: white;
+  overflow: hidden;
+}
+
+.security-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-12);
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .security-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.text-white {
+  color: white;
+}
+
+.security-description {
+  font-size: 1.125rem;
+  color: var(--color-slate-300);
+  line-height: 1.6;
+  margin-bottom: var(--spacing-8);
+}
+
+.security-features {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-6);
+}
+
+.sec-feature {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--spacing-4);
+}
+
+.sec-icon {
+  color: var(--color-primary-light);
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.sec-feature-title {
+  font-size: 1.125rem;
+  color: white;
+  margin-bottom: var(--spacing-1);
+}
+
+.sec-feature-text {
+  color: var(--color-slate-400);
+  font-size: 0.9375rem;
+  line-height: 1.5;
+}
+
+/* Shield Animation */
+.security-visual {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 400px;
+}
+
+.shield-container {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.main-shield {
+  color: var(--color-primary-light);
+  position: relative;
+  z-index: 10;
+  filter: drop-shadow(0 0 20px rgba(56, 189, 248, 0.5));
+}
+
+.pulse-ring {
+  position: absolute;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  border: 2px solid var(--color-primary-light);
+  animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.pulse-ring.delay-1 {
+  animation-delay: 1.5s;
+}
+
+@keyframes pulse {
+  0% { transform: scale(0.8); opacity: 0.8; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
