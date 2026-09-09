@@ -36,9 +36,9 @@ const Features: React.FC = () => {
           </p>
         </div>
 
-        <div className="features-grid grid md:grid-cols-2 lg:grid-cols-4">
+        <div className="features-grid grid md:grid-cols-2 lg:grid-cols-4 relative z-10">
           {featuresList.map((feature, idx) => (
-            <div key={idx} className={`feature-card animate-fade-in delay-${(idx + 1) * 100}`}>
+            <div key={idx} className={`feature-card glass animate-fade-in delay-${(idx + 1) * 100}`}>
               <div className="feature-icon-wrapper">
                 {feature.icon}
               </div>
@@ -50,6 +50,9 @@ const Features: React.FC = () => {
           ))}
         </div>
       </div>
+      
+      {/* Background Decorators */}
+      <div className="bg-blob blob-3"></div>
     </section>
   );
 };

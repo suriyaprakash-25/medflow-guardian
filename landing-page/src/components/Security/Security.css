@@ -1,5 +1,5 @@
 .security-section {
-  background-color: var(--color-slate-900);
+  background: radial-gradient(circle at 70% 50%, var(--color-slate-800) 0%, var(--color-slate-900) 80%);
   color: white;
   overflow: hidden;
 }

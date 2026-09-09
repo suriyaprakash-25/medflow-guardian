@@ -1,5 +1,5 @@
 
-import { ArrowRight, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ShieldCheck, Activity, Users, FileText, Search, Bell } from 'lucide-react';
 import './Hero.css';
 
 const Hero: React.FC = () => {
@@ -12,7 +12,7 @@ const Hero: React.FC = () => {
             <span>Secure Medical Record Management</span>
           </div>
           <h1 className="hero-title">
-            Patient-Controlled Health Data for a <span className="text-primary">Connected World</span>
+            Patient-Controlled Health Data for a <span className="text-gradient">Connected World</span>
           </h1>
           <p className="hero-description">
             MedFlow Guardian empowers you to securely share your medical records with doctors across multiple hospitals. You control who sees your data, and for how long.
@@ -39,7 +39,7 @@ const Hero: React.FC = () => {
         </div>
         
         <div className="hero-visual animate-fade-in delay-200">
-          <div className="mockup-window">
+          <div className="mockup-window glass animate-float">
             <div className="mockup-header">
               <span className="dot dot-red"></span>
               <span className="dot dot-yellow"></span>
@@ -47,17 +47,41 @@ const Hero: React.FC = () => {
             </div>
             <div className="mockup-body">
               <div className="mockup-sidebar">
-                <div className="mockup-item active"></div>
-                <div className="mockup-item"></div>
-                <div className="mockup-item"></div>
+                <div className="mockup-item active"><Activity size={18} /></div>
+                <div className="mockup-item"><Users size={18} /></div>
+                <div className="mockup-item"><FileText size={18} /></div>
               </div>
               <div className="mockup-main">
-                <div className="mockup-card header-card"></div>
-                <div className="mockup-card-grid">
-                  <div className="mockup-card small-card"></div>
-                  <div className="mockup-card small-card"></div>
+                <div className="mockup-card header-card">
+                  <div className="mockup-search">
+                    <Search size={14} className="text-muted" />
+                    <div className="line search-line"></div>
+                  </div>
+                  <div className="mockup-user">
+                    <Bell size={16} className="text-muted" />
+                    <div className="mockup-avatar small"></div>
+                  </div>
                 </div>
-                <div className="mockup-card large-card">
+                <div className="mockup-card-grid">
+                  <div className="mockup-card small-card stat-card">
+                    <div className="stat-icon-bg bg-blue"><Users size={20} className="text-primary" /></div>
+                    <div className="stat-content">
+                      <div className="line label"></div>
+                      <div className="line val"></div>
+                    </div>
+                  </div>
+                  <div className="mockup-card small-card stat-card">
+                    <div className="stat-icon-bg bg-teal"><Activity size={20} className="text-secondary" /></div>
+                    <div className="stat-content">
+                      <div className="line label"></div>
+                      <div className="line val"></div>
+                    </div>
+                  </div>
+                </div>
+                <div className="mockup-card large-card list-card">
+                  <div className="mockup-list-header">
+                    <div className="line title-line"></div>
+                  </div>
                   <div className="mockup-grant-access">
                     <div className="mockup-avatar"></div>
                     <div className="mockup-text">
@@ -65,6 +89,13 @@ const Hero: React.FC = () => {
                       <div className="line short"></div>
                     </div>
                     <button className="mockup-btn">Grant</button>
+                  </div>
+                  <div className="mockup-list-item">
+                    <div className="mockup-avatar placeholder"></div>
+                    <div className="mockup-text">
+                      <div className="line"></div>
+                      <div className="line short"></div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -74,6 +105,7 @@ const Hero: React.FC = () => {
       </div>
       
       {/* Background Decorators */}
+      <div className="hero-bg-image"></div>
       <div className="bg-blob blob-1"></div>
       <div className="bg-blob blob-2"></div>
     </section>

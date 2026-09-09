@@ -32,7 +32,7 @@
 .tab-btn.active {
   background-color: var(--color-primary);
   color: white;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 4px 14px 0 rgba(2, 132, 199, 0.39);
 }
 
 .experience-content {
@@ -103,14 +103,26 @@
   background-position: center;
   background-color: var(--color-slate-100);
   min-height: 250px;
+  overflow: hidden;
+  transition: transform 0.5s ease;
+}
+
+.experience-panel:hover .panel-image {
+  transform: scale(1.05);
 }
 
 .patient-image {
-  background-image: linear-gradient(to bottom right, var(--color-primary-light), var(--color-primary));
-  opacity: 0.8;
+  background-image: url('../../assets/patient_ui.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 1;
 }
 
 .doctor-image {
-  background-image: linear-gradient(to bottom right, var(--color-secondary), #0f766e);
-  opacity: 0.8;
+  background-image: url('../../assets/doctor_ui.png');
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: 1;
 }

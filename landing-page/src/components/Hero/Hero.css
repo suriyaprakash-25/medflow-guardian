@@ -110,8 +110,8 @@
 }
 
 .mockup-window {
-  background-color: var(--color-slate-50);
-  border: 1px solid var(--color-slate-200);
+  /* background-color: var(--color-slate-50); removed for glass effect */
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-xl);
   overflow: hidden;
@@ -127,8 +127,8 @@
   display: flex;
   gap: 6px;
   padding: 12px 16px;
-  background-color: var(--color-slate-100);
-  border-bottom: 1px solid var(--color-slate-200);
+  background-color: rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.3);
 }
 
 .dot {
@@ -147,8 +147,8 @@
 
 .mockup-sidebar {
   width: 80px;
-  background-color: white;
-  border-right: 1px solid var(--color-slate-200);
+  background-color: rgba(255, 255, 255, 0.3);
+  border-right: 1px solid rgba(255, 255, 255, 0.3);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -156,11 +156,19 @@
 }
 
 .mockup-item {
-  height: 24px;
+  height: 36px;
   border-radius: var(--radius-sm);
-  background-color: var(--color-slate-100);
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-slate-400);
 }
-.mockup-item.active { background-color: var(--color-primary-light); opacity: 0.5;}
+.mockup-item.active { 
+  background-color: var(--color-primary-light); 
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
 
 .mockup-main {
   flex: 1;
@@ -168,7 +176,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  background-color: var(--color-slate-50);
+  background-color: transparent;
 }
 
 .mockup-card {
@@ -178,13 +186,78 @@
   border: 1px solid var(--color-slate-100);
 }
 
-.header-card { height: 60px; }
+.header-card { 
+  height: 60px; 
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+}
+.mockup-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--color-slate-50);
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  width: 150px;
+}
+.search-line { width: 60px; margin: 0; }
+.mockup-user {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.mockup-avatar.small { width: 28px; height: 28px; }
+
 .mockup-card-grid {
   display: flex;
   gap: 16px;
 }
-.small-card { height: 100px; flex: 1; }
+.small-card { 
+  height: 90px; 
+  flex: 1; 
+}
+.stat-card {
+  display: flex;
+  align-items: center;
+  padding: 16px;
+  gap: 12px;
+}
+.stat-icon-bg {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bg-blue { background-color: #e0f2fe; }
+.bg-teal { background-color: #ccfbf1; }
+.stat-content { flex: 1; }
+.stat-content .label { width: 40px; height: 6px; margin-bottom: 8px; }
+.stat-content .val { width: 60px; height: 12px; background-color: var(--color-slate-700); }
+
 .large-card { flex: 1; padding: 16px; display: flex; align-items: center; justify-content: center; }
+.list-card {
+  flex-direction: column;
+  justify-content: flex-start;
+  padding: 20px;
+}
+.mockup-list-header {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.title-line { width: 80px; height: 10px; background-color: var(--color-slate-400); }
+.mockup-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 12px;
+  background-color: white;
+  border-bottom: 1px solid var(--color-slate-50);
+}
+.mockup-avatar.placeholder { background-color: var(--color-slate-100); }
 
 .mockup-grant-access {
   display: flex;
@@ -214,6 +287,21 @@
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
+}
+
+.hero-bg-image {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 65%;
+  height: 100%;
+  background-image: url('../../assets/hero-bg.png');
+  background-size: cover;
+  background-position: left center;
+  opacity: 0.15;
+  z-index: 0;
+  mask-image: linear-gradient(to right, transparent, black 40%);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 40%);
 }
 
 /* Background Blobs */

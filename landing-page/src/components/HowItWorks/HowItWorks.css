@@ -30,6 +30,12 @@
   }
 }
 
+.step-item:hover .step-icon {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 8px var(--color-bg), 0 10px 25px -5px rgba(2, 132, 199, 0.3);
+  border-color: var(--color-primary);
+}
+
 .step-icon-container {
   position: relative;
   display: flex;
@@ -56,6 +62,7 @@
   justify-content: center;
   z-index: 2;
   box-shadow: 0 0 0 8px var(--color-bg);
+  transition: all var(--transition-normal);
 }
 
 .step-connector {
@@ -65,7 +72,7 @@
   left: 50%;
   transform: translateX(-50%);
   width: 2px;
-  background-color: var(--color-slate-200);
+  background: linear-gradient(to bottom, var(--color-primary-light), var(--color-secondary));
   z-index: 1;
 }
 
@@ -78,6 +85,7 @@
     width: auto;
     height: 2px;
     transform: translateY(-50%);
+    background: linear-gradient(to right, var(--color-primary-light), var(--color-secondary));
   }
   
   .step-item:last-child .step-connector {
