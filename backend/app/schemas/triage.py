@@ -3,6 +3,7 @@ from typing import Optional
 from datetime import datetime
 
 class TriageRequestBase(BaseModel):
+    hospital_id: int
     symptoms: str
 
 class TriageRequestCreate(TriageRequestBase):

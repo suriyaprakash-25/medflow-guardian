@@ -24,6 +24,7 @@ async def submit_triage_request(
     # Create the db record
     db_request = TriageRequest(
         patient_id=current_patient.id,
+        hospital_id=request_in.hospital_id,
         symptoms=request_in.symptoms,
         priority=ai_result["priority"],
         ai_reasoning=ai_result["ai_reasoning"],
@@ -34,7 +35,7 @@ async def submit_triage_request(
     db.commit()
     db.refresh(db_request)
 
-    await manager.broadcast_to_role({
+    await manager.broadcast_to_hospital({
         "type": "triage_update",
         "data": {
             "id": db_request.id,
@@ -47,7 +48,7 @@ async def submit_triage_request(
             "disclaimer": db_request.disclaimer,
             "created_at": db_request.created_at.isoformat()
         }
-    }, "doctor")
+    }, "doctor", request_in.hospital_id)
 
     return db_request
 
@@ -57,7 +58,18 @@ def list_triage_requests(
     current_doctor: User = Depends(get_current_doctor),
     status: str = None
 ):
-    query = db.query(TriageRequest)
+    from app.models.hospital import HospitalStaff
+    # Only get requests for hospitals where doctor has an active membership
+    active_affiliations = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_doctor.id,
+        HospitalStaff.is_active == True
+    ).all()
+    hospital_ids = [aff.hospital_id for aff in active_affiliations]
+
+    if not hospital_ids:
+        return []
+
+    query = db.query(TriageRequest).filter(TriageRequest.hospital_id.in_(hospital_ids))
     if status:
         query = query.filter(TriageRequest.status == status)
     
@@ -81,6 +93,15 @@ async def update_triage_status(
     db_request = db.query(TriageRequest).filter(TriageRequest.id == id).first()
     if not db_request:
         raise HTTPException(status_code=404, detail="Triage request not found")
+
+    from app.models.hospital import HospitalStaff
+    active_affiliation = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_doctor.id,
+        HospitalStaff.hospital_id == db_request.hospital_id,
+        HospitalStaff.is_active == True
+    ).first()
+    if not active_affiliation:
+        raise HTTPException(status_code=403, detail="Not authorized for this hospital's triage requests")
     
     db_request.status = request_in.status
     db.commit()
@@ -94,6 +115,6 @@ async def update_triage_status(
         }
     }
     await manager.send_personal_message(payload, db_request.patient_id)
-    await manager.broadcast_to_role(payload, "doctor")
+    await manager.broadcast_to_hospital(payload, "doctor", db_request.hospital_id)
 
     return db_request

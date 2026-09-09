@@ -2,9 +2,21 @@ import httpx
 import asyncio
 import sqlite3
 import os
+import sys
 
 async def run_final_verification():
     print("=== FINAL END-TO-END VERIFICATION ===")
+    
+    # Run the seed script to ensure DB is initialized and migrated
+    print("Running database initialization and seeding (Step 0)...")
+    import subprocess
+    import os
+    seed_script_path = os.path.join(os.path.dirname(__file__), "scripts", "seed.py")
+    seed_result = subprocess.run([sys.executable, seed_script_path], capture_output=True, text=True)
+    if seed_result.returncode != 0:
+        print("FAILED to seed database:", seed_result.stderr)
+        assert False
+    print("VERIFIED: Database initialization and seeding successful")
     
     # Check git tracking first (Step 30)
     print("Checking Git tracking (Step 30)...")

@@ -46,7 +46,10 @@ def upload_document(
         raise HTTPException(status_code=404, detail="Visit not found")
 
     # 2. Validate doctor authorization for this visit's hospital
-    affiliations = db.query(HospitalStaff).filter(HospitalStaff.user_id == current_doctor.id).all()
+    affiliations = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_doctor.id,
+        HospitalStaff.is_active == True
+    ).all()
     hospital_ids = [aff.hospital_id for aff in affiliations]
     if visit.hospital_id not in hospital_ids:
         raise HTTPException(status_code=403, detail="Not authorized to upload documents for this hospital's visits")
@@ -174,8 +177,11 @@ def download_document(
         if doc.patient_id != current_user.id:
             raise HTTPException(status_code=403, detail="Not authorized to access this document")
     elif current_user.role == "doctor":
-        # 1. Check hospital affiliations
-        affiliations = db.query(HospitalStaff).filter(HospitalStaff.user_id == current_user.id).all()
+        # 1. Check active hospital affiliations
+        affiliations = db.query(HospitalStaff).filter(
+            HospitalStaff.user_id == current_user.id,
+            HospitalStaff.is_active == True
+        ).all()
         hospital_ids = [aff.hospital_id for aff in affiliations]
         
         has_affiliation_access = doc.hospital_id in hospital_ids or doc.uploaded_by_doctor_id == current_user.id

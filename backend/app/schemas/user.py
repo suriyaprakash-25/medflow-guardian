@@ -12,6 +12,8 @@ class UserCreate(UserBase):
 class User(UserBase):
     id: int
     is_active: bool
+    patient_profile: Optional['PatientProfile'] = None
+    practitioner_profile: Optional['PractitionerProfile'] = None
 
     class Config:
         from_attributes = True
@@ -26,3 +28,21 @@ class PatientProfile(PatientProfileBase):
 
     class Config:
         from_attributes = True
+
+class PractitionerProfileBase(BaseModel):
+    specialty: Optional[str] = None
+    license_number: Optional[str] = None
+    bio: Optional[str] = None
+
+class PractitionerProfileCreate(PractitionerProfileBase):
+    pass
+
+class PractitionerProfile(PractitionerProfileBase):
+    id: int
+    user_id: int
+    is_verified: bool
+
+    class Config:
+        from_attributes = True
+
+User.update_forward_refs()

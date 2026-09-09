@@ -29,8 +29,11 @@ def get_patient_visits(db: Session = Depends(get_db), current_patient: User = De
 
 @router.get("/visits/doctor", response_model=List[VisitWithDetails])
 def get_doctor_visits(db: Session = Depends(get_db), current_doctor: User = Depends(get_current_doctor)):
-    # Doctor can only see visits for hospitals they are affiliated with
-    affiliations = db.query(HospitalStaff).filter(HospitalStaff.user_id == current_doctor.id).all()
+    # Doctor can only see visits for hospitals they are affiliated with (active)
+    affiliations = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_doctor.id,
+        HospitalStaff.is_active == True
+    ).all()
     hospital_ids = [aff.hospital_id for aff in affiliations]
     
     if not hospital_ids:
@@ -44,15 +47,23 @@ def get_admin_dashboard(db: Session = Depends(get_db), current_user: User = Depe
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Not authorized")
     
-    # Get hospital affiliation
-    affiliation = db.query(HospitalStaff).filter(HospitalStaff.user_id == current_user.id, HospitalStaff.role == "admin").first()
+    # Get active hospital affiliation
+    affiliation = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_user.id, 
+        HospitalStaff.role == "admin",
+        HospitalStaff.is_active == True
+    ).first()
     if not affiliation:
         raise HTTPException(status_code=403, detail="No admin hospital affiliation found")
 
     hospital_id = affiliation.hospital_id
 
-    # Get doctors at this hospital
-    doctor_affiliations = db.query(HospitalStaff).filter(HospitalStaff.hospital_id == hospital_id, HospitalStaff.role == "doctor").all()
+    # Get active doctors at this hospital
+    doctor_affiliations = db.query(HospitalStaff).filter(
+        HospitalStaff.hospital_id == hospital_id, 
+        HospitalStaff.role == "doctor",
+        HospitalStaff.is_active == True
+    ).all()
     doctor_ids = [aff.user_id for aff in doctor_affiliations]
     doctors = db.query(User).filter(User.id.in_(doctor_ids)).all()
 
