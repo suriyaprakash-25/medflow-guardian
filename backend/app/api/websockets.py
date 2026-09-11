@@ -1,8 +1,9 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
 from typing import Dict, List
 from app.core.config import settings
 from jose import jwt, JWTError
-from app.core.database import SessionLocal
+from sqlalchemy.orm import Session
+from app.api.dependencies import get_db
 from app.models.user import User
 
 router = APIRouter()
@@ -37,6 +38,8 @@ class ConnectionManager:
 
     async def send_personal_message(self, message: dict, user_id: int):
         if user_id in self.active_connections:
+            if not self._evaluate_message_authorization(message, user_id):
+                return
             for connection in self.active_connections[user_id]:
                 await connection.send_json(message)
 
@@ -44,6 +47,8 @@ class ConnectionManager:
         for user_id, user_role in self.user_roles.items():
             if user_role == role:
                 if user_id in self.active_connections:
+                    if not self._evaluate_message_authorization(message, user_id):
+                        continue
                     for connection in self.active_connections[user_id]:
                         await connection.send_json(message)
 
@@ -53,17 +58,58 @@ class ConnectionManager:
                 user_hospitals = self.user_hospitals.get(user_id, [])
                 if hospital_id in user_hospitals:
                     if user_id in self.active_connections:
+                        if not self._evaluate_message_authorization(message, user_id):
+                            continue
                         for connection in self.active_connections[user_id]:
                             await connection.send_json(message)
 
     async def broadcast_to_all(self, message: dict):
         for user_id, connections in self.active_connections.items():
+            if not self._evaluate_message_authorization(message, user_id):
+                continue
             for connection in connections:
                 await connection.send_json(message)
 
+    def _evaluate_message_authorization(self, message: dict, user_id: int) -> bool:
+        from app.core.database import SessionLocal
+        from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
+        
+        msg_type = message.get("type")
+        data = message.get("data", {})
+        patient_id = data.get("patient_id")
+        
+        # Admin or generic notifications don't need patient data access checks
+        if msg_type in ["notification_created", "access_request_created", "access_request_approved", "access_request_rejected", "access_revoked"]:
+            return True
+            
+        if not patient_id:
+            return True
+            
+        # Verify authorization
+        db = SessionLocal()
+        try:
+            actor = db.query(User).filter(User.id == user_id).first()
+            if not actor: 
+                return False
+                
+            auth_svc = AuthorizationService(db)
+            ctx = AuthorizationContext(
+                actor=actor,
+                operation=Operation.READ,
+                resource_type=ResourceType.PATIENT_READING,
+                db=db,
+                patient_id=patient_id,
+                hospital_id=data.get("hospital_id"),
+                purpose="TREATMENT"
+            )
+            decision = auth_svc.authorize(ctx)
+            return decision.allowed
+        finally:
+            db.close()
+
 manager = ConnectionManager()
 
-def verify_token(token: str) -> User:
+def verify_token(token: str, db: Session) -> User:
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email: str = payload.get("sub")
@@ -72,19 +118,16 @@ def verify_token(token: str) -> User:
     except JWTError:
         return None
         
-    db = SessionLocal()
     user = db.query(User).filter(User.email == email).first()
-    db.close()
     return user
 
 @router.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str):
-    user = verify_token(token)
-    if not user:
+async def websocket_endpoint(websocket: WebSocket, token: str, db: Session = Depends(get_db)):
+    user = verify_token(token, db)
+    if not user or not user.is_active:
         await websocket.close(code=1008)
         return
         
-    db = SessionLocal()
     hospital_ids = []
     if user.role in ["doctor", "admin"]:
         from app.models.hospital import HospitalStaff
@@ -93,7 +136,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str):
             HospitalStaff.is_active == True
         ).all()
         hospital_ids = [aff.hospital_id for aff in affiliations]
-    db.close()
 
     await manager.connect(websocket, user.id, user.role, hospital_ids)
     try:

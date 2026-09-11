@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.api.dependencies import get_current_user, get_current_doctor
+from app.api.dependencies import get_current_user, get_practitioner_identity
 from app.models.user import User, PractitionerProfile
 from app.schemas.user import PractitionerProfile as PractitionerProfileSchema, PractitionerProfileCreate
 
@@ -10,7 +10,7 @@ router = APIRouter()
 @router.get("/practitioner-profile", response_model=PractitionerProfileSchema)
 def get_practitioner_profile(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_doctor)
+    current_user: User = Depends(get_practitioner_identity)
 ):
     profile = db.query(PractitionerProfile).filter(PractitionerProfile.user_id == current_user.id).first()
     if not profile:
@@ -21,7 +21,7 @@ def get_practitioner_profile(
 def update_practitioner_profile(
     profile_in: PractitionerProfileCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_doctor)
+    current_user: User = Depends(get_practitioner_identity)
 ):
     profile = db.query(PractitionerProfile).filter(PractitionerProfile.user_id == current_user.id).first()
     if profile:

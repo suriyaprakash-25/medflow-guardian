@@ -1,0 +1,101 @@
+from typing import Optional, Any
+from sqlalchemy.orm import Session
+from datetime import datetime
+
+from app.models.consent import Consent, ConsentState, ConsentPolicyVersion, ConsentStatus
+from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
+
+class ConsentService:
+    """
+    Policy Evaluation Engine for MedFlow Guardian Phase 5.
+    Evaluates Purpose and checks Enforcement State against Authoritative Consent State.
+    """
+    def __init__(self, db: Session):
+        self._db = db
+
+    def evaluate(
+        self, 
+        ctx: AuthorizationContext, 
+        purpose: Optional[str], 
+        enforcement_state_id: Optional[int]
+    ) -> AuthorizationDecision:
+        """
+        Evaluate if the current operation is permitted by the patient's active consent policy.
+        Also enforces the strict Stale-State Rule if an enforcement point is verifying its state.
+        """
+        # 1. Identify if this operation requires consent evaluation.
+        # Generally, a doctor accessing a patient's document requires consent evaluation.
+        # If the actor is the patient themselves, they don't need a consent policy to access their own data.
+        if ctx.actor.role == "patient" and ctx.patient_id == ctx.actor.id:
+            return AuthorizationDecision.allow()
+
+        # If there's no patient context, consent doesn't apply (e.g. listing hospitals)
+        if not ctx.patient_id:
+            return AuthorizationDecision.allow()
+
+        # 2. Extract Consent relationship.
+        # This requires the CAE or route to pass the actual Consent ID via relationship_context or a new field.
+        # For document download, the doctor uses a DocumentAccessGrant.
+        # We assume `ctx.relationship_context` holds the DocumentAccessGrant or Consent ID.
+        consent_id = getattr(ctx.relationship_context, "consent_id", None)
+        if not consent_id:
+            # Try to see if relationship_context IS the consent_id
+            if isinstance(ctx.relationship_context, int):
+                consent_id = ctx.relationship_context
+
+        if not consent_id:
+            # If no consent is provided for cross-role access, and it's a sensitive operation, deny.
+            return AuthorizationDecision.deny(
+                DenialReason.INVALID_CONTEXT, 
+                "No consent context provided for cross-role access"
+            )
+
+        # 3. Load the Authoritative Consent State (the latest state row)
+        authoritative_state = self._db.query(ConsentState).filter(
+            ConsentState.consent_id == consent_id
+        ).order_by(ConsentState.created_at.desc(), ConsentState.id.desc()).first()
+
+        if not authoritative_state:
+            return AuthorizationDecision.deny(
+                DenialReason.INVALID_CONTEXT, "Consent state history is missing"
+            )
+
+        # 4. ENFORCEMENT STATE STALE-STATE RULE
+        if enforcement_state_id is not None:
+            if authoritative_state.id != enforcement_state_id:
+                # We use INVALID_CONTEXT for now, but semantically it's ENFORCEMENT_STATE_STALE
+                return AuthorizationDecision.deny(
+                    DenialReason.INVALID_CONTEXT, 
+                    f"ENFORCEMENT_STATE_STALE: Authoritative state is {authoritative_state.id}, but enforcement requested {enforcement_state_id}"
+                )
+
+        # 5. Check if Consent is actually ACTIVE
+        if authoritative_state.status != ConsentStatus.ACTIVE.value:
+            return AuthorizationDecision.deny(
+                DenialReason.OPERATION_NOT_ALLOWED, 
+                f"Consent is currently {authoritative_state.status}"
+            )
+
+        # 6. Load the active Policy Version
+        policy = authoritative_state.policy_version
+        if not policy:
+            return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Policy version not found")
+
+        # 7. Purpose Evaluation
+        if purpose:
+            allowed_purposes = policy.policy_payload.get("allowed_purposes", [])
+            if purpose not in allowed_purposes:
+                return AuthorizationDecision.deny(
+                    DenialReason.OPERATION_NOT_ALLOWED,
+                    f"PURPOSE_NOT_ALLOWED: '{purpose}' is not permitted by the active consent policy"
+                )
+
+        # 8. Operation Evaluation
+        allowed_operations = policy.policy_payload.get("allowed_operations", [])
+        if allowed_operations and ctx.operation.value not in allowed_operations:
+             return AuthorizationDecision.deny(
+                DenialReason.OPERATION_NOT_ALLOWED,
+                f"OPERATION_NOT_ALLOWED: '{ctx.operation.value}' is not permitted by the active consent policy"
+            )
+
+        return AuthorizationDecision.allow()

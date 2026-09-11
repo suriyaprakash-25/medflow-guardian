@@ -7,9 +7,12 @@ from app.models.monitoring import PatientReading, Message
 from app.models.user import User
 from app.schemas.monitoring import PatientReadingCreate, PatientReading as PatientReadingSchema
 from app.schemas.monitoring import MessageCreate, Message as MessageSchema
-from app.api.dependencies import get_current_patient, get_current_doctor, get_current_user
+from app.api.dependencies import get_patient_identity, get_practitioner_identity, get_current_active_user, get_authorization_service
 from app.models.hospital import Visit
 from app.api.websockets import manager
+from app.services.authorization import (
+    AuthorizationService, AuthorizationContext, Operation, ResourceType
+)
 
 router = APIRouter()
 
@@ -17,8 +20,18 @@ router = APIRouter()
 async def submit_reading(
     reading_in: PatientReadingCreate,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient,
+        operation=Operation.CREATE,
+        resource_type=ResourceType.PATIENT_READING,
+        db=db
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
+
     db_reading = PatientReading(
         patient_id=current_patient.id,
         heart_rate=reading_in.heart_rate,
@@ -51,22 +64,25 @@ async def submit_reading(
 def get_readings(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor)
+    current_doctor: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
-    # Verify relationship
-    visit = db.query(Visit).filter(
-        Visit.patient_id == patient_id,
-        Visit.doctor_id == current_doctor.id
-    ).first()
-    if not visit:
-        raise HTTPException(status_code=403, detail="Not authorized to view readings for this patient")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor,
+        operation=Operation.LIST,
+        resource_type=ResourceType.PATIENT_READING,
+        db=db,
+        patient_id=patient_id  # engine verifies visit relationship
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     return db.query(PatientReading).filter(PatientReading.patient_id == patient_id).order_by(PatientReading.created_at.desc()).limit(50).all()
 
 @router.get("/readings/patient", response_model=List[PatientReadingSchema])
 def get_patient_own_readings(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     return db.query(PatientReading).filter(PatientReading.patient_id == current_patient.id).order_by(PatientReading.created_at.desc()).limit(50).all()
 
@@ -74,16 +90,18 @@ def get_patient_own_readings(
 async def send_message(
     msg_in: MessageCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
-    # Verify they have a relationship
-    if current_user.role == "patient":
-        visit = db.query(Visit).filter(Visit.patient_id == current_user.id, Visit.doctor_id == msg_in.receiver_id).first()
-    else:
-        visit = db.query(Visit).filter(Visit.patient_id == msg_in.receiver_id, Visit.doctor_id == current_user.id).first()
-
-    if not visit:
-        raise HTTPException(status_code=403, detail="Not authorized to message this user")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user,
+        operation=Operation.CREATE,
+        resource_type=ResourceType.MESSAGE,
+        db=db,
+        patient_id=msg_in.receiver_id  # engine determines relationship based on actor role
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     db_msg = Message(
         sender_id=current_user.id,
@@ -112,16 +130,18 @@ async def send_message(
 def get_messages(
     user_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
-    # Verify relationship
-    if current_user.role == "patient":
-        visit = db.query(Visit).filter(Visit.patient_id == current_user.id, Visit.doctor_id == user_id).first()
-    else:
-        visit = db.query(Visit).filter(Visit.patient_id == user_id, Visit.doctor_id == current_user.id).first()
-
-    if not visit:
-        raise HTTPException(status_code=403, detail="Not authorized to view messages with this user")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user,
+        operation=Operation.LIST,
+        resource_type=ResourceType.MESSAGE,
+        db=db,
+        patient_id=user_id  # engine determines relationship based on actor role
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     # Fetch chat history between current_user and user_id
     messages = db.query(Message).filter(

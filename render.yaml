@@ -1,0 +1,56 @@
+# MedFlow Guardian Production Infrastructure Definition
+
+services:
+  - type: web
+    name: medflow-backend-prod
+    env: python
+    buildCommand: "cd backend && pip install -r requirements.txt && alembic upgrade head"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
+    healthCheckPath: "/ready"
+    envVars:
+      - key: ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Must be set in Render Dashboard
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false # Must be set in Render Dashboard
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        sync: false # Must be a Fernet key, set manually
+
+  - type: web
+    name: medflow-patient-app-prod
+    env: static
+    buildCommand: "cd patient-app && npm install && npm run build"
+    staticPublishPath: "./patient-app/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: medflow-backend-prod
+          type: web
+          property: url
+
+  - type: web
+    name: medflow-doctor-portal-prod
+    env: static
+    buildCommand: "cd doctor-portal && npm install && npm run build"
+    staticPublishPath: "./doctor-portal/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: medflow-backend-prod
+          type: web
+          property: url
+
+  - type: web
+    name: medflow-admin-portal-prod
+    env: static
+    buildCommand: "cd admin-portal && npm install && npm run build"
+    staticPublishPath: "./admin-portal/dist"
+    envVars:
+      - key: VITE_API_BASE_URL
+        fromService:
+          name: medflow-backend-prod
+          type: web
+          property: url

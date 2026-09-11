@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, Text, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -19,6 +19,7 @@ class Hospital(Base):
 
 class HospitalStaff(Base):
     __tablename__ = "hospital_staff"
+    __table_args__ = (UniqueConstraint('user_id', 'hospital_id', name='uq_hospital_staff_user_hospital'),)
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
@@ -46,3 +47,21 @@ class Visit(Base):
     patient = relationship("User", foreign_keys=[patient_id], back_populates="visits_as_patient")
     doctor = relationship("User", foreign_keys=[doctor_id], back_populates="visits_as_doctor")
     hospital = relationship("Hospital", back_populates="visits")
+
+class Appointment(Base):
+    __tablename__ = "appointments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    
+    scheduled_time = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String, default="scheduled") # scheduled, cancelled, completed
+    reason = Column(String, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    patient = relationship("User", foreign_keys=[patient_id])
+    doctor = relationship("User", foreign_keys=[doctor_id])
+    hospital = relationship("Hospital")

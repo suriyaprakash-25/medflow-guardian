@@ -7,7 +7,7 @@ async def test_flow():
     print("--- Testing Real-time & REST Fallback ---")
     
     # 1. Login to get tokens
-    async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
+    async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
         p_resp = await client.post("/api/auth/login", data={"username": "patient@demo.com", "password": "password"})
         patient_token = p_resp.json()["access_token"]
         
@@ -34,8 +34,8 @@ async def test_flow():
         print("REST Fallback (Persistence) Verified.")
 
     # 3. Test WebSockets
-    ws_patient_url = f"ws://localhost:8080/ws?token={patient_token}"
-    ws_doctor_url = f"ws://localhost:8080/ws?token={doctor_token}"
+    ws_patient_url = f"ws://localhost:8000/ws?token={patient_token}"
+    ws_doctor_url = f"ws://localhost:8000/ws?token={doctor_token}"
 
     async with websockets.connect(ws_patient_url) as ws_patient, \
                websockets.connect(ws_doctor_url) as ws_doctor:
@@ -43,7 +43,7 @@ async def test_flow():
         print("WebSockets connected.")
         
         # Patient sends a REST message, which should be broadcast to Doctor via WS
-        async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
+        async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
             await client.post("/api/messages", json={
                 "receiver_id": 2, # doctor id
                 "content": "Hello Doctor!"

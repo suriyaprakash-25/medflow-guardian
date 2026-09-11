@@ -1,0 +1,39 @@
+# Environments
+.env
+.env.local
+.env.*.local
+.venv/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+build/
+.next/
+
+# DB
+*.sqlite3
+*.db
+medflow.db
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Custom
+.agents/
+skills-lock.json
