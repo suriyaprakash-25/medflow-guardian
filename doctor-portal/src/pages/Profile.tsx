@@ -1,34 +1,85 @@
 import { useDoctorContext } from '../components/Layout';
+import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
+import { Badge } from '@shared/ui/Badge';
+import { EmptyState } from '@shared/ui/EmptyState';
+import { ShieldCheck, History, Activity, AlertCircle, Clock } from 'lucide-react';
 
 export default function Profile() {
   const { auditLogs } = useDoctorContext();
 
   return (
-    <div className="dashboard-grid">
-      <div className="column">
-        <section className="card">
-          <h3>Security Audit Logs</h3>
-          <p style={{fontSize: 13, color: 'var(--text-muted)', marginBottom: 16}}>Track your activity and accesses across patient records.</p>
+    <div className="max-w-4xl mx-auto space-y-6 animate-in fade-in duration-500">
+      <div>
+        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Security Audit Logs</h2>
+        <p className="text-sm text-slate-500 mt-1">Review your recent activity, access events, and system interactions.</p>
+      </div>
+
+      <Card>
+        <CardHeader className="bg-slate-50/50 border-b border-slate-100 pb-4">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <History className="h-5 w-5 text-slate-500" />
+            Activity Timeline
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
           {auditLogs.length === 0 ? (
-            <p className="empty-state">No audit logs.</p>
+            <div className="p-12">
+              <EmptyState 
+                icon={<ShieldCheck className="h-10 w-10 text-slate-300" />}
+                title="No audit logs found"
+                description="Your account activity will appear here."
+              />
+            </div>
           ) : (
-            <div style={{maxHeight: 600, overflowY: 'auto'}}>
-              {auditLogs.map(a => (
-                <div key={a.id} style={{padding: '12px 0', borderBottom: '1px solid var(--border)'}}>
-                  <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: 4}}>
-                    <strong style={{fontSize: 13, textTransform: 'uppercase'}}>{a.action.replace('_', ' ')}</strong>
-                    <span style={{fontSize: 12, color: 'var(--text-muted)'}}>{new Date(a.created_at).toLocaleString()}</span>
+            <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+              {auditLogs.map(log => {
+                const isWarning = log.action.includes('unauthorized') || log.action.includes('failed');
+                
+                return (
+                  <div key={log.id} className="p-5 hover:bg-slate-50 transition-colors flex gap-4">
+                    <div className="mt-0.5 shrink-0">
+                      {isWarning ? (
+                        <div className="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center">
+                          <AlertCircle className="h-4 w-4 text-rose-600" />
+                        </div>
+                      ) : (
+                        <div className="h-8 w-8 rounded-full bg-slate-100 flex items-center justify-center">
+                          <Activity className="h-4 w-4 text-slate-500" />
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex-1 space-y-1">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="font-semibold text-sm text-slate-900 uppercase tracking-wide">
+                          {log.action.replace(/_/g, ' ')}
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500">
+                          <Clock className="h-3 w-3" />
+                          {new Date(log.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
+                        </div>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {log.target_user_id && (
+                          <Badge variant="outline" className="bg-white text-xs font-medium text-slate-600">
+                            Target User ID: {log.target_user_id}
+                          </Badge>
+                        )}
+                        {log.document_id && (
+                          <Badge variant="outline" className="bg-white text-xs font-medium text-slate-600">
+                            Document ID: {log.document_id}
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  <p style={{fontSize: 13, margin: '4px 0', color: '#475569'}}>
-                    Target User: {a.target_user_id || 'N/A'}
-                    {a.document_id && ` | Doc: ${a.document_id}`}
-                  </p>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
-        </section>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

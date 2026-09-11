@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import axios from 'axios';
+import originalAxios from 'axios';
+import { api as axios } from '../lib/api';
 import { useNavigate, Outlet, Link, useLocation, useOutletContext } from 'react-router-dom';
+import { Activity, FileText, Lock, History, User, Bell, LogOut, Menu, Calendar } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 export interface TriageRequest {
   id: number;
@@ -121,7 +124,7 @@ export default function Layout() {
       const res = await axios.get('/api/triage/patient', { headers });
       setRequests(res.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 401) handleLogout();
+      if (originalAxios.isAxiosError(error) && error.response?.status === 401) handleLogout();
     }
   }, [token]);
 
@@ -189,11 +192,18 @@ export default function Layout() {
     }
   }, [token]);
 
+
+
   useEffect(() => {
-    if (!token) {
-      navigate('/login');
-      return;
-    }
+    // Token is guaranteed by ProtectedRoute
+    
+    // Fetch authoritative identity from backend
+    axios.get('/api/auth/me', { headers }).then(() => {
+      // Identity successfully verified
+    }).catch(err => {
+      console.error(err);
+      if (err.response?.status === 401) handleLogout();
+    });
     
     fetchPatientVisits();
     fetchRequests();
@@ -264,28 +274,15 @@ export default function Layout() {
   }, [activeDoctorId, fetchMessages]);
 
   useEffect(() => {
-    let interval: any;
-    if (vitalsOn) {
-      interval = setInterval(() => {
-        axios.post('/api/readings', {
-          heart_rate: Math.floor(Math.random() * (100 - 60 + 1) + 60),
-          oxygen_level: Math.floor(Math.random() * (100 - 95 + 1) + 95),
-          blood_pressure_sys: Math.floor(Math.random() * (130 - 110 + 1) + 110),
-          blood_pressure_dia: Math.floor(Math.random() * (85 - 70 + 1) + 70),
-          is_simulated: true
-        }, { headers }).then(() => {
-          fetchReadings();
-        }).catch(console.error);
-      }, 5000);
-    }
-    return () => clearInterval(interval);
+    // Vitals generation removed for production Phase 7.
+    // If real hardware integration is added in Phase 8, it will be placed here.
   }, [vitalsOn, headers, fetchReadings]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     if (!selectedHospitalId) {
-      alert('Please select a hospital.');
+      toast.error('Please select a hospital.');
       setSubmitting(false);
       return;
     }
@@ -295,7 +292,7 @@ export default function Layout() {
       setSelectedHospitalId('');
       await fetchRequests(); // refresh immediately to show AI result
     } catch (error) {
-      alert('Failed to submit symptoms.');
+      toast.error('Failed to submit symptoms.');
     } finally {
       setSubmitting(false);
     }
@@ -330,7 +327,7 @@ export default function Layout() {
       link.click();
       link.parentNode?.removeChild(link);
     } catch (error) {
-      alert('Failed to download document');
+      toast.error('Failed to download document');
     }
   };
 
@@ -343,10 +340,10 @@ export default function Layout() {
         duration_hours: duration,
         document_ids: req.requested_documents.map((d: any) => d.id)
       }, { headers });
-      alert('Access request approved');
+      toast.success('Access request approved');
       fetchAccessData();
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Approval failed');
+      toast.error(error.response?.data?.detail || 'Approval failed');
     }
   };
 
@@ -357,7 +354,7 @@ export default function Layout() {
       }, { headers });
       fetchAccessData();
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Rejection failed');
+      toast.error(error.response?.data?.detail || 'Rejection failed');
     }
   };
 
@@ -366,7 +363,7 @@ export default function Layout() {
       await axios.post(`/api/access-grants/${grantId}/revoke`, {}, { headers });
       fetchAccessData();
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Revocation failed');
+      toast.error(error.response?.data?.detail || 'Revocation failed');
     }
   };
 
@@ -407,75 +404,182 @@ export default function Layout() {
   };
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: '#f8fafc' }}>
+    <div className="flex h-screen w-full bg-background overflow-hidden">
       {/* Sidebar Layout */}
-      <div style={{ width: '250px', background: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#38bdf8' }}>MedFlow Guardian</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>Patient Portal</p>
+      <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0">
+        <div className="p-6">
+          <div className="flex items-center gap-2 text-primary">
+            <Activity className="h-6 w-6" />
+            <h2 className="m-0 text-lg font-bold">MedFlow</h2>
+          </div>
+          <p className="m-0 mt-1 text-xs text-slate-400">Patient Portal</p>
         </div>
         
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', padding: '10px 0' }}>
-          {[
-            { path: '/dashboard', label: 'Dashboard' },
-            { path: '/documents', label: 'Documents' },
-            { path: '/access-requests', label: 'Access Requests', badge: pendingRequestsCount },
-            { path: '/access-history', label: 'Access History' },
-            { path: '/profile', label: 'Profile' },
-            { path: '/notifications', label: 'Notifications', badge: unreadCount },
-          ].map(item => (
-            <Link 
-              key={item.path} 
-              to={item.path} 
-              style={{
-                padding: '12px 20px', 
-                color: location.pathname === item.path ? 'white' : '#cbd5e1', 
-                background: location.pathname === item.path ? '#1e293b' : 'transparent',
-                textDecoration: 'none',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderLeft: location.pathname === item.path ? '4px solid #38bdf8' : '4px solid transparent'
-              }}
-            >
-              {item.label}
-              {!!item.badge && (
-                <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '12px' }}>
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          ))}
-        </nav>
+        <div className="flex-1 overflow-y-auto py-4">
+          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">My Health</div>
+          <nav className="flex flex-col gap-1 px-2 mb-6">
+            {[
+              { path: '/dashboard', label: 'Overview', icon: Activity },
+              { path: '/appointments', label: 'Appointments', icon: Calendar },
+            ].map(item => {
+              const isActive = location.pathname === item.path;
+              const Icon = item.icon;
+              return (
+                <Link 
+                  key={item.path} 
+                  to={item.path} 
+                  className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 ${
+                    isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
+                    <span className="text-sm">{item.label}</span>
+                  </div>
+                </Link>
+              )
+            })}
+          </nav>
 
-        <div style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <div style={{
-              width: '10px', height: '10px', borderRadius: '50%',
-              background: wsStatus === 'connected' ? '#10b981' : (wsStatus === 'connecting' ? '#f59e0b' : '#ef4444')
-            }}></div>
-            <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-              {wsStatus === 'connected' ? 'Live' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline')}
+          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Medical Records</div>
+          <nav className="flex flex-col gap-1 px-2 mb-6">
+            {[
+              { path: '/clinical-history', label: 'Clinical History', icon: Activity },
+              { path: '/documents', label: 'Documents', icon: FileText },
+              { path: '/access-requests', label: 'Access Requests', badge: pendingRequestsCount, icon: Lock },
+              { path: '/access-history', label: 'Access History', icon: History },
+            ].map(item => {
+              const isActive = location.pathname === item.path;
+              const Icon = item.icon;
+              return (
+                <Link 
+                  key={item.path} 
+                  to={item.path} 
+                  className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 ${
+                    isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
+                    <span className="text-sm">{item.label}</span>
+                  </div>
+                  {!!item.badge && (
+                    <span className="bg-amber-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Communication</div>
+          <nav className="flex flex-col gap-1 px-2 mb-6">
+            {[
+              { path: '/notifications', label: 'Notifications', badge: unreadCount, icon: Bell },
+            ].map(item => {
+              const isActive = location.pathname === item.path;
+              const Icon = item.icon;
+              return (
+                <Link 
+                  key={item.path} 
+                  to={item.path} 
+                  className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 ${
+                    isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
+                    <span className="text-sm">{item.label}</span>
+                  </div>
+                  {!!item.badge && (
+                    <span className="bg-primary text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      {item.badge}
+                    </span>
+                  )}
+                </Link>
+              )
+            })}
+          </nav>
+
+          <div className="px-4 mb-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">Account</div>
+          <nav className="flex flex-col gap-1 px-2">
+            {[
+              { path: '/profile', label: 'Profile Settings', icon: User },
+            ].map(item => {
+              const isActive = location.pathname === item.path;
+              const Icon = item.icon;
+              return (
+                <Link 
+                  key={item.path} 
+                  to={item.path} 
+                  className={`flex items-center justify-between px-3 py-2 rounded-md transition-all duration-200 ${
+                    isActive ? 'bg-primary/10 text-primary font-semibold' : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : 'text-slate-400'}`} />
+                    <span className="text-sm">{item.label}</span>
+                  </div>
+                </Link>
+              )
+            })}
+          </nav>
+        </div>
+
+        <div className="p-4 border-t border-slate-800">
+          <div className="flex items-center gap-2 mb-4 px-2">
+            <div className={`w-2.5 h-2.5 rounded-full ${wsStatus === 'connected' ? 'bg-emerald-500' : (wsStatus === 'connecting' ? 'bg-amber-500' : 'bg-red-500')}`}></div>
+            <span className="text-xs text-slate-400 font-medium">
+              {wsStatus === 'connected' ? 'System Live' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline')}
             </span>
           </div>
           <button 
             onClick={handleLogout} 
-            style={{ width: '100%', background: 'transparent', border: '1px solid #334155', color: '#e2e8f0', padding: '8px', borderRadius: '6px', cursor: 'pointer' }}
+            className="flex w-full items-center justify-center gap-2 bg-transparent border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white px-4 py-2 rounded-md transition-colors text-sm font-medium"
           >
+            <LogOut className="h-4 w-4" />
             Logout
           </button>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ background: 'white', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
-            {location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-          </h1>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <header className="bg-white border-b border-border px-6 py-4 flex items-center justify-between shrink-0 z-10 sticky top-0 shadow-sm">
+          <div className="flex items-center gap-4">
+            <button className="md:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="m-0 text-xl font-semibold text-slate-900 tracking-tight">
+                {location.pathname === '/dashboard' ? 'Overview' : location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </h1>
+              {location.pathname === '/dashboard' && (
+                <p className="text-xs text-slate-500 mt-0.5">Welcome back to MedFlow Guardian</p>
+              )}
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => navigate('/notifications')} 
+              className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+            >
+              <Bell className="h-5 w-5" />
+              {unreadCount > 0 && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full ring-2 ring-white"></span>
+              )}
+            </button>
+            <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm border border-primary/20">
+              P
+            </div>
+          </div>
         </header>
-        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-          <Outlet context={contextValue} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+          <div className="mx-auto max-w-6xl">
+            <Outlet context={contextValue} />
+          </div>
         </main>
       </div>
     </div>
