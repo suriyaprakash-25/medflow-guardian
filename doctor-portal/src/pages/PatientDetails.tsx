@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
@@ -8,13 +8,34 @@ import { HeartPulse, MessageSquare, Send, Activity, User, MapPin, Clock, Stethos
 import { api as axios } from '../lib/api';
 import { toast } from 'react-hot-toast';
 
+interface PrescriptionRecord {
+  id: number;
+  is_active: boolean;
+  dosage?: string | null;
+  frequency?: string | null;
+}
+
+interface LabRecord {
+  id: number;
+  test_name: string;
+  test_date: string;
+  result_value: string | number;
+  unit?: string | null;
+}
+
+interface ClinicalNoteRecord {
+  id: number;
+  title: string;
+  content: string;
+}
+
 export default function PatientDetails() {
   const { activePatientId, messages, chatInput, setChatInput, sendMessage, historicalReadings, liveVitals, doctorVisits } = useDoctorContext();
   const [activeTab, setActiveTab] = useState<'vitals' | 'messages' | 'clinical'>('vitals');
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const [prescriptions, setPrescriptions] = useState<any[]>([]);
-  const [labs, setLabs] = useState<any[]>([]);
-  const [notes, setNotes] = useState<any[]>([]);
+  const [prescriptions, setPrescriptions] = useState<PrescriptionRecord[]>([]);
+  const [labs, setLabs] = useState<LabRecord[]>([]);
+  const [notes, setNotes] = useState<ClinicalNoteRecord[]>([]);
   const [clinicalLoading, setClinicalLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
@@ -50,7 +71,7 @@ export default function PatientDetails() {
           setClinicalLoading(false);
         }
       };
-      fetchClinicalData();
+      void fetchClinicalData();
     }
   }, [activeTab, activePatientId, doctorVisits]);
 
@@ -60,8 +81,6 @@ export default function PatientDetails() {
     const token = localStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
     try {
-      // Provider interoperability is deliberately consent-bound. The doctor must
-      // select/enter the consent granted to this doctor before an export can run.
       const rawConsentId = window.prompt('Enter the patient consent ID authorizing this FHIR export:');
       if (!rawConsentId) return;
       const consentId = Number(rawConsentId);
