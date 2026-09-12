@@ -373,9 +373,15 @@ export default function Layout() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await axios.post('/api/auth/logout');
+    } catch (error) {
+      console.error('Failed to revoke server session during logout', error);
+    } finally {
+      localStorage.removeItem('token');
+      navigate('/login');
+    }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
