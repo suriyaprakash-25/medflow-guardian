@@ -38,6 +38,12 @@ def _require_admin_scope(
                 raise HTTPException(status_code=404, detail="Hospital not found")
         return
 
+    # A patient identity can never be an organization administrator. Preserve
+    # an authorization denial instead of returning a context-validation error
+    # merely because hospital_id was omitted.
+    if current_user.role == "patient":
+        raise HTTPException(status_code=403, detail="Patients are not authorized for the admin surface")
+
     if hospital_id is None:
         if require_hospital_for_org_admin:
             raise HTTPException(status_code=400, detail="hospital_id is required for organization admins")
