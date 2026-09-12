@@ -120,11 +120,32 @@ def test_websocket_accepts_subprotocol_bearer_without_echoing_token(db_session):
         assert websocket.accepted_subprotocol != token
 
 
+def test_websocket_rejects_mfa_preauth_token(db_session):
+    user = _create_user(db_session, email="r8-ws-preauth@demo.com")
+    token = create_access_token(
+        user.email,
+        expires_delta=timedelta(minutes=2),
+        token_type="preauth",
+        mfa_verified=False,
+    )
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws",
+            subprotocols=[WS_AUTH_PROTOCOL, token],
+        ):
+            pass
+
+    assert exc.value.code == 1008
+
+
 def test_websocket_rejects_expired_access_token(db_session):
     user = _create_user(db_session, email="r8-ws-expired@demo.com")
     expired = jwt.encode(
         {
             "sub": user.email,
+            "token_type": "access",
+            "mfa_verified": True,
             "exp": datetime.now(timezone.utc) - timedelta(seconds=1),
         },
         settings.SECRET_KEY,
