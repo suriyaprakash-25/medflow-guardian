@@ -1,20 +1,21 @@
+import ipaddress
 import os
 import secrets
 import sys
 from urllib.parse import urlparse
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
 ENV = os.getenv("ENV", "development")
+SERVICE_ROLE = os.getenv("MEDFLOW_SERVICE_ROLE", "web").strip().lower()
+if SERVICE_ROLE not in {"web", "malware_worker"}:
+    raise ValueError("MEDFLOW_SERVICE_ROLE must be 'web' or 'malware_worker'")
 
 
 def _parse_cors_origins(raw_values: list[str]) -> list[str]:
-    """Normalize and validate explicit browser origins.
-
-    Credentialed CORS cannot safely use a wildcard. Production deployment must
-    therefore provide concrete HTTP(S) origins for every MedFlow frontend.
-    """
+    """Normalize and validate explicit browser origins."""
     origins: list[str] = []
     for raw in raw_values:
         for value in raw.split(","):
@@ -27,33 +28,66 @@ def _parse_cors_origins(raw_values: list[str]) -> list[str]:
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError(f"Invalid CORS origin: {origin}")
             if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
-                raise ValueError(f"CORS origin must not contain a path/query/fragment: {origin}")
+                raise ValueError(
+                    f"CORS origin must not contain a path/query/fragment: {origin}"
+                )
             if origin not in origins:
                 origins.append(origin)
     return origins
 
 
+def _parse_trusted_proxy_cidrs(raw_value: str) -> list[str]:
+    """Validate and canonicalize the reverse-proxy trust boundary."""
+    networks: list[str] = []
+    for raw_cidr in raw_value.split(","):
+        candidate = raw_cidr.strip()
+        if not candidate:
+            continue
+        try:
+            network = ipaddress.ip_network(candidate, strict=False)
+        except ValueError as exc:
+            raise ValueError(
+                f"Invalid TRUSTED_PROXY_CIDRS entry: {candidate}"
+            ) from exc
+        if network.prefixlen == 0:
+            raise ValueError(
+                "TRUSTED_PROXY_CIDRS must not contain a catch-all network"
+            )
+        canonical = str(network)
+        if canonical not in networks:
+            networks.append(canonical)
+    return networks
+
+
 class Settings:
     PROJECT_NAME = "MedFlow Guardian API"
     ENV = ENV
+    SERVICE_ROLE = SERVICE_ROLE
     ALGORITHM = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES = 15  # Short-lived token
+    ACCESS_TOKEN_EXPIRE_MINUTES = 15
 
-    # Production secrets must be stable and explicitly provisioned.
+    # Only the web role signs JWTs/decrypts MFA secrets. A dedicated production
+    # malware worker intentionally does not need access to those web-only keys.
+    _web_production = ENV == "production" and SERVICE_ROLE == "web"
+
     SECRET_KEY = os.getenv("SECRET_KEY")
     if not SECRET_KEY:
-        if ENV == "production":
-            raise ValueError("CRITICAL: SECRET_KEY environment variable is missing in production!")
+        if _web_production:
+            raise ValueError(
+                "CRITICAL: SECRET_KEY environment variable is missing in production!"
+            )
         SECRET_KEY = secrets.token_urlsafe(32)
 
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
     if not ENCRYPTION_KEY:
-        if ENV == "production":
-            raise ValueError("CRITICAL: ENCRYPTION_KEY environment variable is missing in production!")
+        if _web_production:
+            raise ValueError(
+                "CRITICAL: ENCRYPTION_KEY environment variable is missing in production!"
+            )
         from cryptography.fernet import Fernet
+
         ENCRYPTION_KEY = Fernet.generate_key().decode()
 
-    # Database Configuration
     DATABASE_URL = os.getenv("DATABASE_URL")
     if not DATABASE_URL or DATABASE_URL.startswith("sqlite"):
         print("CRITICAL CONFIGURATION ERROR: A valid PostgreSQL DATABASE_URL is required.")
@@ -62,8 +96,6 @@ class Settings:
 
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
 
-    # CORS Configuration. Render injects the three service URLs individually;
-    # operators can also provide FRONTEND_CORS_ORIGINS for custom domains.
     _cors_inputs = [
         os.getenv("FRONTEND_CORS_ORIGINS", ""),
         os.getenv("PATIENT_APP_ORIGIN", ""),
@@ -76,15 +108,21 @@ class Settings:
             "http://127.0.0.1:5173,http://127.0.0.1:5174,http://127.0.0.1:5175"
         ]
     FRONTEND_CORS_ORIGINS = _parse_cors_origins(_cors_inputs)
-    if ENV == "production" and not FRONTEND_CORS_ORIGINS:
-        raise ValueError(
-            "CRITICAL: production requires at least one explicit frontend CORS origin"
-        )
+    if _web_production:
+        if not FRONTEND_CORS_ORIGINS:
+            raise ValueError(
+                "CRITICAL: production requires at least one explicit frontend CORS origin"
+            )
+        insecure_origins = [
+            origin
+            for origin in FRONTEND_CORS_ORIGINS
+            if not origin.startswith("https://")
+        ]
+        if insecure_origins:
+            raise ValueError(
+                "CRITICAL: production frontend CORS origins must use HTTPS"
+            )
 
-    # The Render-generated frontend and API hostnames are cross-origin and may
-    # also be cross-site. Production therefore uses a Secure SameSite=None
-    # refresh cookie, while cookie-authenticated endpoints separately validate
-    # the browser Origin against the exact CORS allowlist.
     REFRESH_COOKIE_SAMESITE = os.getenv(
         "REFRESH_COOKIE_SAMESITE",
         "none" if ENV == "production" else "lax",
@@ -94,19 +132,10 @@ class Settings:
             "REFRESH_COOKIE_SAMESITE must be one of: lax, strict, none"
         )
     REFRESH_COOKIE_SECURE = ENV == "production"
-    if ENV == "production" and REFRESH_COOKIE_SAMESITE == "none" and not REFRESH_COOKIE_SECURE:
-        raise ValueError("SameSite=None refresh cookies must be Secure in production")
 
-    # Proxy / rate-limit identity. Forwarded headers are ignored unless the
-    # immediate peer belongs to one of these explicitly configured networks.
     TRUSTED_PROXY_CIDRS_RAW = os.getenv("TRUSTED_PROXY_CIDRS", "")
-    TRUSTED_PROXY_CIDRS = [
-        cidr.strip()
-        for cidr in TRUSTED_PROXY_CIDRS_RAW.split(",")
-        if cidr.strip()
-    ]
+    TRUSTED_PROXY_CIDRS = _parse_trusted_proxy_cidrs(TRUSTED_PROXY_CIDRS_RAW)
 
-    # Supabase Configuration
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     if not SUPABASE_URL:
         print("CRITICAL CONFIGURATION ERROR: SUPABASE_URL is required.")
@@ -119,9 +148,6 @@ class Settings:
 
     SUPABASE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "medical-documents")
 
-    # R7 Malware Scanning. Production must have a real scanner configured.
-    # Test/development environments may leave the scanner unset; documents then
-    # remain non-releasable and are marked scan_error rather than auto-cleaned.
     MALWARE_SCANNER_HOST = os.getenv("CLAMAV_HOST")
     MALWARE_SCANNER_PORT = int(os.getenv("CLAMAV_PORT", "3310"))
     MALWARE_SCANNER_TIMEOUT_SECONDS = float(
@@ -130,6 +156,13 @@ class Settings:
     MALWARE_SCANNER_MAX_BYTES = int(
         os.getenv("CLAMAV_MAX_BYTES", str(10 * 1024 * 1024))
     )
+
+    if not 1 <= MALWARE_SCANNER_PORT <= 65535:
+        raise ValueError("CLAMAV_PORT must be between 1 and 65535")
+    if MALWARE_SCANNER_TIMEOUT_SECONDS <= 0:
+        raise ValueError("CLAMAV_TIMEOUT_SECONDS must be positive")
+    if MALWARE_SCANNER_MAX_BYTES <= 0:
+        raise ValueError("CLAMAV_MAX_BYTES must be positive")
 
     if ENV == "production" and not MALWARE_SCANNER_HOST:
         raise ValueError(

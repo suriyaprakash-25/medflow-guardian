@@ -6,9 +6,17 @@ on:
   pull_request:
     branches: [ main, dev ]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     services:
       postgres:
         image: postgres:15
@@ -25,10 +33,12 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
       with:
         python-version: '3.11'
 
@@ -38,6 +48,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest httpx
+        pip check
 
     - name: Provision Supabase-compatible browser roles
       env:
@@ -219,6 +230,19 @@ jobs:
         cd backend
         pytest tests/test_p2_medium_security_regressions.py -v
 
+    - name: Run P3 production hardening verification
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        pytest tests/test_p3_production_hardening.py -v
+
     - name: Run Backend Security & Integration Tests
       env:
         TESTING: "True"
@@ -234,14 +258,17 @@ jobs:
 
   frontend-build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       matrix:
         app: [patient-app, doctor-portal, admin-portal]
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
 
     - name: Set up Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:
         node-version: '22'
         cache: npm
