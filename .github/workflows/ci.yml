@@ -25,10 +25,10 @@ jobs:
           --health-retries 5
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Python
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: '3.11'
 
@@ -38,6 +38,18 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pytest httpx
+
+    - name: Apply database migrations
+      env:
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        alembic upgrade head
 
     - name: Run Phase 4.1 FHIR Consent import verification
       env:
@@ -71,15 +83,17 @@ jobs:
       matrix:
         app: [patient-app, doctor-portal, admin-portal]
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Set up Node.js
-      uses: actions/setup-node@v3
+      uses: actions/setup-node@v4
       with:
-        node-version: '20'
+        node-version: '22'
+        cache: npm
+        cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
     - name: Install and Build ${{ matrix.app }}
       run: |
         cd ${{ matrix.app }}
-        npm install
+        npm ci
         npm run build
