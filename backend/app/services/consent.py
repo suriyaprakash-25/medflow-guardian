@@ -96,6 +96,11 @@ class ConsentService:
                 "Consent state history is missing",
             )
 
+        # Bind the authoritative enforcement state/policy into the CAE context
+        # so audit records identify exactly which consent state/version was used.
+        ctx.consent_state_id = authoritative_state.id
+        ctx.policy_version = str(authoritative_state.policy_version_id)
+
         if authoritative_state.status != ConsentStatus.ACTIVE.value:
             return AuthorizationDecision.deny(
                 DenialReason.OPERATION_NOT_ALLOWED,
