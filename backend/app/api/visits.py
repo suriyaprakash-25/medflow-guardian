@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
@@ -7,7 +7,7 @@ from app.core.database import get_db
 from app.models.hospital import Visit
 from app.models.user import User
 from app.schemas.clinical import VisitResponse
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_current_user, get_patient_identity
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
 from pydantic import BaseModel
 
@@ -56,18 +56,30 @@ def create_visit(
 def get_patient_visits(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_patient: User = Depends(get_patient_identity)
 ):
+    """Return visit history only to the patient who owns that history.
+
+    This endpoint is intentionally patient-owned. Practitioner access to patient
+    history must use a separately scoped, consent-aware workflow rather than an
+    arbitrary patient ID supplied in the URL.
+    """
+    if patient_id != current_patient.id:
+        raise HTTPException(status_code=403, detail="Cannot access another patient's visits")
+
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
-        actor=current_user,
+        actor=current_patient,
         operation=Operation.LIST,
         resource_type=ResourceType.VISIT,
         db=db,
-        patient_id=patient_id
+        patient_id=current_patient.id
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.reason)
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
 
-    return db.query(Visit).filter(Visit.patient_id == patient_id).order_by(Visit.visit_date.desc()).all()
+    # Defense in depth: scope by the authenticated identity, never the path value.
+    return db.query(Visit).filter(
+        Visit.patient_id == current_patient.id
+    ).order_by(Visit.visit_date.desc()).all()
