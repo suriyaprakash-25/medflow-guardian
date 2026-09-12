@@ -57,8 +57,8 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=settings.ENV == "production",
-        samesite="lax",
+        secure=settings.REFRESH_COOKIE_SECURE,
+        samesite=settings.REFRESH_COOKIE_SAMESITE,
         max_age=7 * 24 * 60 * 60, # 7 days
         path="/api/auth"
     )
@@ -67,10 +67,29 @@ def clear_refresh_cookie(response: Response):
     response.delete_cookie(
         key="refresh_token",
         path="/api/auth",
-        secure=settings.ENV == "production",
+        secure=settings.REFRESH_COOKIE_SECURE,
         httponly=True,
-        samesite="lax"
+        samesite=settings.REFRESH_COOKIE_SAMESITE,
     )
+
+
+def _enforce_cookie_request_origin(request: Request) -> None:
+    """Reject browser CSRF against cookie-authenticated auth endpoints.
+
+    Production refresh cookies may use SameSite=None because the Render frontend
+    and API are separate origins/sites. Browser requests carrying those cookies
+    must therefore originate from one of the same explicit origins accepted by
+    credentialed CORS. Non-browser clients commonly omit Origin and are not
+    granted browser credentials automatically, so an absent Origin is allowed.
+    """
+    if settings.ENV != "production":
+        return
+    origin = request.headers.get("origin")
+    if origin is None:
+        return
+    normalized = origin.strip().rstrip("/")
+    if normalized not in settings.FRONTEND_CORS_ORIGINS:
+        raise HTTPException(status_code=403, detail="Untrusted request origin")
 
 
 def _revoke_token_family(db: DBSession, user_id: int, token_family: str) -> None:
@@ -214,6 +233,7 @@ def enroll_mfa(current_user: User = Depends(get_current_active_user), db: DBSess
 @router.post("/refresh")
 @limiter.limit("10/minute")
 def refresh_token(request: Request, response: Response, db: DBSession = Depends(get_db)):
+    _enforce_cookie_request_origin(request)
     raw_refresh_token = request.cookies.get("refresh_token")
     if not raw_refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token provided")
@@ -289,6 +309,7 @@ def refresh_token(request: Request, response: Response, db: DBSession = Depends(
 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: DBSession = Depends(get_db)):
+    _enforce_cookie_request_origin(request)
     raw_refresh_token = request.cookies.get("refresh_token")
     if raw_refresh_token:
         hashed_token = hash_refresh_token(raw_refresh_token)
