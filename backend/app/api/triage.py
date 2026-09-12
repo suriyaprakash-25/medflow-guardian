@@ -20,8 +20,16 @@ router = APIRouter()
 async def submit_triage_request(
     request_in: TriageRequestCreate,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.CREATE,
+        resource_type=ResourceType.TRIAGE_REQUEST, db=db,
+        hospital_id=request_in.hospital_id, patient_id=current_patient.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     # Analyze symptoms using the mock AI engine
     ai_result = analyze_symptoms(request_in.symptoms)
     
@@ -61,8 +69,15 @@ async def submit_triage_request(
 def list_triage_requests(
     db: Session = Depends(get_db),
     current_doctor: User = Depends(get_practitioner_identity),
-    status: str = None
+    status: str = None,
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor, operation=Operation.LIST,
+        resource_type=ResourceType.TRIAGE_REQUEST, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     from app.models.hospital import HospitalStaff
     # Only get requests for hospitals where doctor has an active membership
     active_affiliations = db.query(HospitalStaff).filter(
@@ -83,8 +98,15 @@ def list_triage_requests(
 @router.get("/patient", response_model=List[TriageRequestSchema])
 def list_patient_triage_requests(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.LIST,
+        resource_type=ResourceType.TRIAGE_REQUEST, db=db, patient_id=current_patient.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     query = db.query(TriageRequest).filter(TriageRequest.patient_id == current_patient.id)
     return query.order_by(TriageRequest.created_at.desc()).all()
 

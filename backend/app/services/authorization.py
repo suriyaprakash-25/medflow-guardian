@@ -160,6 +160,9 @@ class AuthorizationContext:
     consent_id: Optional[int] = None
     consent_state_id: Optional[int] = None
     policy_version: Optional[int] = None
+    # Explicitly identify operations that are allowed before consent exists
+    # (for example, requesting access). None preserves legacy auto-evaluation.
+    requires_consent: Optional[bool] = None
 
 
 # ---------------------------------------------------------------------------
@@ -584,6 +587,11 @@ class AuthorizationService:
                     return AuthorizationDecision.deny(DenialReason.RESOURCE_NOT_OWNED, "Not your appointment")
                 return AuthorizationDecision.allow()
             if actor.role == "doctor":
+                if ctx.relationship_context is not None and ctx.relationship_context != actor.id:
+                    return AuthorizationDecision.deny(
+                        DenialReason.RESOURCE_NOT_OWNED,
+                        "A practitioner may only list their own appointments",
+                    )
                 if ctx.hospital_id:
                     denial = self._require_active_membership(actor.id, ctx.hospital_id)
                     if denial: return denial
@@ -668,6 +676,11 @@ class AuthorizationService:
             return AuthorizationDecision.deny(
                 DenialReason.RESOURCE_NOT_OWNED,
                 "A patient may only import consent for their own record",
+            )
+        if ctx.resource is not None and ctx.resource.patient_id != ctx.actor.id:
+            return AuthorizationDecision.deny(
+                DenialReason.RESOURCE_NOT_OWNED,
+                "Not your consent",
             )
         return AuthorizationDecision.allow()
 
@@ -827,6 +840,8 @@ class AuthorizationService:
             return AuthorizationDecision.allow()  # scoped to actor.id by query
 
         if op in (Operation.READ, Operation.MARK_READ):
+            if op == Operation.MARK_READ and notif is None and ctx.relationship_context == actor.id:
+                return AuthorizationDecision.allow()
             if not notif:
                 return AuthorizationDecision.deny(DenialReason.RESOURCE_NOT_FOUND, "Notification not found")
             if notif.user_id != actor.id:

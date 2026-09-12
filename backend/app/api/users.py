@@ -1,18 +1,26 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.api.dependencies import get_current_user, get_practitioner_identity, get_patient_identity
+from app.api.dependencies import get_authorization_service, get_practitioner_identity, get_patient_identity
 from app.models.user import User, PractitionerProfile, PatientProfile
 from app.schemas.user import PractitionerProfile as PractitionerProfileSchema, PractitionerProfileCreate, PatientProfileUpdate
 from app.schemas.user import User as UserSchema
+from app.services.authorization import AuthorizationContext, AuthorizationService, Operation, ResourceType
 
 router = APIRouter()
 
 @router.get("/practitioner-profile", response_model=PractitionerProfileSchema)
 def get_practitioner_profile(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_practitioner_identity)
+    current_user: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.READ,
+        resource_type=ResourceType.PRACTITIONER_PROFILE, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     profile = db.query(PractitionerProfile).filter(PractitionerProfile.user_id == current_user.id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="Practitioner profile not found")
@@ -22,8 +30,15 @@ def get_practitioner_profile(
 def update_practitioner_profile(
     profile_in: PractitionerProfileCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_practitioner_identity)
+    current_user: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.UPDATE,
+        resource_type=ResourceType.PRACTITIONER_PROFILE, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     profile = db.query(PractitionerProfile).filter(PractitionerProfile.user_id == current_user.id).first()
     if profile:
         profile.specialty = profile_in.specialty
@@ -45,8 +60,15 @@ def update_practitioner_profile(
 @router.get("/patient-profile", response_model=UserSchema)
 def get_patient_profile(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_patient_identity)
+    current_user: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.READ,
+        resource_type=ResourceType.PATIENT_PROFILE, db=db, patient_id=current_user.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     user = db.query(User).filter(User.id == current_user.id).first()
     if not user.patient_profile:
         # Create an empty profile if none exists
@@ -60,8 +82,15 @@ def get_patient_profile(
 def update_patient_profile(
     profile_in: PatientProfileUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_patient_identity)
+    current_user: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.UPDATE,
+        resource_type=ResourceType.PATIENT_PROFILE, db=db, patient_id=current_user.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     user = db.query(User).filter(User.id == current_user.id).first()
     
     # Update User fields

@@ -17,8 +17,8 @@ from app.schemas.access import (
     AccessRequestCreate, AccessRequestResponse,
     AccessRequestApprove, AccessRequestReject, AccessGrantResponse
 )
-from app.api.dependencies import get_current_user, get_patient_identity, get_practitioner_identity
-from app.services.authorization import Operation
+from app.api.dependencies import get_authorization_service, get_patient_identity, get_practitioner_identity
+from app.services.authorization import AuthorizationContext, AuthorizationService, Operation, ResourceType
 
 router = APIRouter()
 
@@ -28,16 +28,20 @@ def create_access_request(
     request_data: AccessRequestCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_practitioner_identity)
+    current_doctor: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    # Verify doctor is affiliated with the requested hospital
-    membership = db.query(HospitalStaff).filter(
-        HospitalStaff.user_id == current_doctor.id,
-        HospitalStaff.hospital_id == request_data.hospital_id,
-        HospitalStaff.is_active == True
-    ).first()
-    if not membership:
-        raise HTTPException(status_code=403, detail="Not authorized to request on behalf of this hospital")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor,
+        operation=Operation.REQUEST_ACCESS,
+        resource_type=ResourceType.ACCESS_REQUEST,
+        db=db,
+        hospital_id=request_data.hospital_id,
+        patient_id=request_data.patient_id,
+        requires_consent=False,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     # Verify documents belong to patient
     requested_docs = db.query(MedicalDocument).filter(
@@ -101,8 +105,15 @@ def create_access_request(
 @router.get("/access-requests/doctor", response_model=List[AccessRequestResponse])
 def get_doctor_requests(
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_practitioner_identity)
+    current_doctor: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor, operation=Operation.LIST,
+        resource_type=ResourceType.ACCESS_REQUEST, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     requests = db.query(DocumentAccessRequest).filter(
         DocumentAccessRequest.requesting_doctor_id == current_doctor.id
     ).all()
@@ -113,8 +124,15 @@ def get_doctor_requests(
 def get_patient_requests(
     status: str = None,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.LIST,
+        resource_type=ResourceType.ACCESS_REQUEST, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     query = db.query(DocumentAccessRequest).filter(
         DocumentAccessRequest.patient_id == current_patient.id
     )
@@ -129,7 +147,8 @@ def approve_request(
     approval_data: AccessRequestApprove,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
     # Verify durations (1, 4, 24, 96 hours)
     if approval_data.duration_hours not in [1, 4, 24, 96]:
@@ -142,10 +161,13 @@ def approve_request(
 
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    if req.patient_id != current_patient.id:
-        raise HTTPException(status_code=403, detail="Not authorized to approve this request")
-    if req.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Request is already {req.status}")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.GRANT_ACCESS,
+        resource_type=ResourceType.ACCESS_REQUEST, db=db, resource=req,
+        hospital_id=req.requesting_hospital_id, patient_id=req.patient_id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     # Approve
     req.status = "approved"
@@ -255,7 +277,8 @@ def reject_request(
     reject_data: AccessRequestReject,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
     # Phase 8: Concurrency Control - Lock the request
     req = db.query(DocumentAccessRequest).with_for_update().filter(
@@ -264,10 +287,13 @@ def reject_request(
 
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
-    if req.patient_id != current_patient.id:
-        raise HTTPException(status_code=403, detail="Not authorized to reject this request")
-    if req.status != "pending":
-        raise HTTPException(status_code=400, detail=f"Request is already {req.status}")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.DELETE,
+        resource_type=ResourceType.ACCESS_REQUEST, db=db, resource=req,
+        hospital_id=req.requesting_hospital_id, patient_id=req.patient_id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     req.status = "rejected"
     req.responded_at = datetime.utcnow()
@@ -315,7 +341,8 @@ def revoke_grant(
     grant_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
     # Phase 8: Concurrency Control - Lock the grant to prevent concurrent revocations
     grant = db.query(DocumentAccessGrant).with_for_update().filter(
@@ -325,8 +352,13 @@ def revoke_grant(
 
     if not grant:
         raise HTTPException(status_code=404, detail="Grant not found")
-    if grant.status != "active":
-        raise HTTPException(status_code=400, detail="Grant is not active")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.REVOKE_ACCESS,
+        resource_type=ResourceType.ACCESS_GRANT, db=db, resource=grant,
+        hospital_id=grant.hospital_id, patient_id=grant.patient_id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     grant.status = "revoked"
     grant.revoked_at = datetime.utcnow()
@@ -394,8 +426,15 @@ def revoke_grant(
 @router.get("/access-grants/patient", response_model=List[AccessGrantResponse])
 def get_patient_grants(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.LIST,
+        resource_type=ResourceType.ACCESS_GRANT, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     return db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.patient_id == current_patient.id
     ).all()
@@ -404,8 +443,15 @@ def get_patient_grants(
 @router.get("/access-grants/doctor", response_model=List[AccessGrantResponse])
 def get_doctor_grants(
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_practitioner_identity)
+    current_doctor: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor, operation=Operation.LIST,
+        resource_type=ResourceType.ACCESS_GRANT, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     grants = db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.doctor_id == current_doctor.id
     ).all()

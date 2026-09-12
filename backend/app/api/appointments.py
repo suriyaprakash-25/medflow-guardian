@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.hospital import Appointment
 from app.models.user import User
 from app.schemas.clinical import AppointmentCreate, AppointmentResponse, AppointmentUpdate
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_authorization_service, get_current_user
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
 
 router = APIRouter()
@@ -91,10 +91,16 @@ def get_my_appointments(
 def get_doctor_appointments(
     doctor_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    if current_user.role != "doctor" or current_user.id != doctor_id:
-        raise HTTPException(status_code=403, detail="Not authorized")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.LIST,
+        resource_type=ResourceType.APPOINTMENT, db=db,
+        relationship_context=doctor_id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     return db.query(Appointment).filter(Appointment.doctor_id == doctor_id).order_by(Appointment.scheduled_time.desc()).all()
 
 @router.patch("/appointments/{appointment_id}", response_model=AppointmentResponse)

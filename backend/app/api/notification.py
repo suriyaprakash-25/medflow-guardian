@@ -6,15 +6,22 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.notification import Notification
 from app.schemas.notification import NotificationSchema
-from app.api.dependencies import get_current_user
+from app.api.dependencies import get_authorization_service, get_current_active_user
+from app.services.authorization import AuthorizationContext, AuthorizationService, Operation, ResourceType
 
 router = APIRouter()
 
 @router.get("/notifications", response_model=List[NotificationSchema])
 def list_notifications(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.LIST, resource_type=ResourceType.NOTIFICATION, db=db,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     return db.query(Notification).filter(
         Notification.user_id == current_user.id
     ).order_by(Notification.created_at.desc()).all()
@@ -23,7 +30,8 @@ def list_notifications(
 def mark_notification_read(
     notification_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
     notif = db.query(Notification).filter(
         Notification.id == notification_id,
@@ -31,6 +39,12 @@ def mark_notification_read(
     ).first()
     
     if not notif:
+        raise HTTPException(status_code=404, detail="Notification not found")
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.MARK_READ,
+        resource_type=ResourceType.NOTIFICATION, db=db, resource=notif,
+    ))
+    if not decision.allowed:
         raise HTTPException(status_code=404, detail="Notification not found")
         
     notif.is_read = True
@@ -40,8 +54,16 @@ def mark_notification_read(
 @router.post("/notifications/read-all")
 def mark_all_notifications_read(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_active_user),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_user, operation=Operation.MARK_READ,
+        resource_type=ResourceType.NOTIFICATION, db=db,
+        relationship_context=current_user.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     db.query(Notification).filter(
         Notification.user_id == current_user.id,
         Notification.is_read == False

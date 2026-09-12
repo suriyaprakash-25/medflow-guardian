@@ -35,6 +35,9 @@ class ConsentService:
         if ctx.actor.role == "patient" and ctx.patient_id == ctx.actor.id:
             return AuthorizationDecision.allow()
 
+        if ctx.requires_consent is False:
+            return AuthorizationDecision.allow()
+
         # If there is no patient subject in the trusted authorization context,
         # consent does not apply (for example, listing hospitals).
         if not ctx.patient_id:

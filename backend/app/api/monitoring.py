@@ -63,8 +63,15 @@ async def submit_reading(
 @router.get("/readings/patient", response_model=List[PatientReadingSchema])
 def get_patient_own_readings(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.LIST,
+        resource_type=ResourceType.PATIENT_READING, db=db, patient_id=current_patient.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
     return db.query(PatientReading).filter(PatientReading.patient_id == current_patient.id).order_by(PatientReading.created_at.desc()).limit(50).all()
 
 @router.get("/readings/{patient_id}", response_model=List[PatientReadingSchema])

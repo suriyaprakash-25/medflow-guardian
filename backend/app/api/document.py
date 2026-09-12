@@ -243,10 +243,15 @@ def list_patient_documents(
     document_type: Optional[str] = None,
     db: Session = Depends(get_db),
     current_patient: User = Depends(get_patient_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    query = db.query(MedicalDocument).filter(
-        MedicalDocument.patient_id == current_patient.id
-    )
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_patient, operation=Operation.LIST,
+        resource_type=ResourceType.DOCUMENT, db=db, patient_id=current_patient.id,
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
+    query = db.query(MedicalDocument).filter(MedicalDocument.patient_id == current_patient.id)
     if hospital_id:
         query = query.filter(MedicalDocument.hospital_id == hospital_id)
     if document_type:
