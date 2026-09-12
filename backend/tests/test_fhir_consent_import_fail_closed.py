@@ -145,3 +145,58 @@ def test_old_vendor_purpose_dialect_no_longer_selects_a_second_mapper(db_session
     assert response.status_code == 422
     assert "must include a coding" in response.json()["detail"]
     assert db_session.query(Consent).filter(Consent.patient_id == patient.id).count() == 0
+
+
+def test_client_supplied_enforcement_state_cannot_authorize_other_patient_import(db_session):
+    subject = User(
+        email="fhir-other-subject@example.com",
+        hashed_password="hash",
+        role="patient",
+        full_name="Other Subject",
+        is_active=True,
+    )
+    db_session.add(subject)
+    db_session.commit()
+
+    actor = _patient(db_session, "fhir-attacker-patient@example.com")
+    payload = _payload(subject.id)
+    # Model A does not accept client authority snapshots. This field is deliberately
+    # irrelevant to the authorization context and must never change the decision.
+    payload["enforcement_state_id"] = 999999
+
+    response = _post("/api/interoperability/fhir/consents/import", payload)
+
+    assert response.status_code == 403
+    assert actor.id != subject.id
+    assert db_session.query(Consent).filter(Consent.patient_id == subject.id).count() == 0
+
+
+def test_practitioner_cannot_import_patient_consent_even_with_spoofed_authority_fields(db_session):
+    subject = User(
+        email="fhir-doctor-target@example.com",
+        hashed_password="hash",
+        role="patient",
+        full_name="Target Patient",
+        is_active=True,
+    )
+    doctor = User(
+        email="fhir-import-doctor@example.com",
+        hashed_password="hash",
+        role="doctor",
+        full_name="Import Doctor",
+        is_active=True,
+    )
+    db_session.add_all([subject, doctor])
+    db_session.commit()
+    app.dependency_overrides[get_current_user] = lambda: doctor
+
+    payload = _payload(subject.id)
+    payload["enforcement_state_id"] = 1
+    payload["organization"] = [{"reference": "Organization/1"}]
+
+    try:
+        response = _post("/api/interoperability/fhir/consents/import", payload)
+        assert response.status_code == 403
+        assert db_session.query(Consent).filter(Consent.patient_id == subject.id).count() == 0
+    finally:
+        app.dependency_overrides.clear()
