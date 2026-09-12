@@ -206,6 +206,19 @@ jobs:
         cd backend
         pytest tests/test_r9_deployment_configuration.py tests/test_r9_frontend_deployment_contract.py -v
 
+    - name: Run P2 AI boundary and configuration verification
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        pytest tests/test_p2_medium_security_regressions.py -v
+
     - name: Run Backend Security & Integration Tests
       env:
         TESTING: "True"
@@ -234,9 +247,17 @@ jobs:
         cache: npm
         cache-dependency-path: ${{ matrix.app }}/package-lock.json
 
-    - name: Install and Build ${{ matrix.app }}
-      run: |
-        npm ci --prefix frontend-shared
-        cd ${{ matrix.app }}
-        npm ci
-        npm run build
+    - name: Install shared frontend dependencies
+      run: npm ci --prefix frontend-shared
+
+    - name: Install ${{ matrix.app }} dependencies
+      run: npm ci --prefix ${{ matrix.app }}
+
+    - name: Lint ${{ matrix.app }}
+      run: npm run lint --prefix ${{ matrix.app }}
+
+    - name: Test ${{ matrix.app }}
+      run: npm test --prefix ${{ matrix.app }}
+
+    - name: Build ${{ matrix.app }}
+      run: npm run build --prefix ${{ matrix.app }}
