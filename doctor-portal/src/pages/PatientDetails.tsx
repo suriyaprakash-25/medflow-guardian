@@ -20,15 +20,25 @@ export default function PatientDetails() {
 
   useEffect(() => {
     if (activeTab === 'clinical' && activePatientId) {
+      const scopedVisit = doctorVisits.find(v => v.patient_id === activePatientId);
+      if (!scopedVisit?.hospital_id) {
+        toast.error('Clinical access requires an active hospital context for this patient.');
+        return;
+      }
+
       const fetchClinicalData = async () => {
         setClinicalLoading(true);
         const token = localStorage.getItem('token');
         const headers = { Authorization: `Bearer ${token}` };
+        const params = {
+          purpose: 'TREATMENT',
+          hospital_id: scopedVisit.hospital_id,
+        };
         try {
           const [prescRes, labsRes, notesRes] = await Promise.all([
-            axios.get(`/api/clinical/prescriptions/patient/${activePatientId}`, { headers }),
-            axios.get(`/api/clinical/labs/patient/${activePatientId}`, { headers }),
-            axios.get(`/api/clinical/notes/patient/${activePatientId}`, { headers })
+            axios.get(`/api/clinical/prescriptions/patient/${activePatientId}`, { headers, params }),
+            axios.get(`/api/clinical/labs/patient/${activePatientId}`, { headers, params }),
+            axios.get(`/api/clinical/notes/patient/${activePatientId}`, { headers, params })
           ]);
           setPrescriptions(prescRes.data);
           setLabs(labsRes.data);
@@ -42,7 +52,7 @@ export default function PatientDetails() {
       };
       fetchClinicalData();
     }
-  }, [activeTab, activePatientId]);
+  }, [activeTab, activePatientId, doctorVisits]);
 
   const handleExportFHIR = async () => {
     if (!activePatientId) return;

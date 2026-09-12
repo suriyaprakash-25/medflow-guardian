@@ -384,17 +384,28 @@ class AuthorizationService:
         return query.first() is not None
 
     def _get_active_grant(self, doctor_id: int, document_id: int) -> Optional[DocumentAccessGrant]:
-        """Check if there is a non-expired, active grant for a doctor to access a document, returning the grant."""
-        grant = self._db.query(DocumentAccessGrant).filter(
-            DocumentAccessGrant.doctor_id == doctor_id,
-            DocumentAccessGrant.status == "active",
-            DocumentAccessGrant.expires_at > datetime.utcnow()
-        ).first()
-        if not grant:
-            return None
-        # Verify this specific document is in the granted documents
-        for doc in grant.granted_documents:
-            if doc.id == document_id:
+        """Return a matching non-expired active grant for this exact document.
+
+        A practitioner can have several simultaneous grants. Inspecting only the
+        first active grant made authorization depend on database row order and could
+        deny a valid later grant. Resolve deterministically across all candidates and
+        return only a grant that explicitly contains the requested document.
+        """
+        grants = (
+            self._db.query(DocumentAccessGrant)
+            .filter(
+                DocumentAccessGrant.doctor_id == doctor_id,
+                DocumentAccessGrant.status == "active",
+                DocumentAccessGrant.expires_at > datetime.utcnow(),
+            )
+            .order_by(
+                DocumentAccessGrant.granted_at.desc(),
+                DocumentAccessGrant.id.desc(),
+            )
+            .all()
+        )
+        for grant in grants:
+            if any(doc.id == document_id for doc in grant.granted_documents):
                 return grant
         return None
 

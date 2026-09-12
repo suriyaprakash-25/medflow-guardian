@@ -5,8 +5,6 @@ Tests the AuthorizationService directly without HTTP.
 Covers: DEFAULT DENY, role enforcement, ownership, organization isolation,
 relationship requirements, all resource types.
 """
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
 from app.services.authorization import (
@@ -18,7 +16,7 @@ from app.services.authorization import (
     ResourceType,
 )
 from app.models.user import User
-from app.models.hospital import HospitalStaff, Hospital, Visit
+from app.models.hospital import HospitalStaff
 from app.models.document import MedicalDocument
 from app.models.access import DocumentAccessRequest, DocumentAccessGrant
 from app.models.notification import Notification
@@ -92,7 +90,7 @@ def make_notification(user_id=10, notif_id=400):
 
 
 class MockDB:
-    """Minimal SQLAlchemy session mock for unit tests."""
+    """Minimal SQLAlchemy session/query mock for authorization unit tests."""
 
     def __init__(self, membership=None, visit=None, grant=None):
         self._membership = membership
@@ -104,6 +102,24 @@ class MockDB:
 
     def filter(self, *args):
         return self
+
+    def order_by(self, *args):
+        # Production grant resolution orders candidates before materializing them.
+        # The unit mock does not evaluate SQL expressions, but it must preserve the
+        # SQLAlchemy query-chain contract instead of forcing production code to
+        # special-case tests.
+        return self
+
+    def all(self):
+        # `_get_active_grant` now inspects all active grant candidates. Preserve
+        # the existing fixture contract while allowing either one grant or a list.
+        if self._grant is None:
+            return []
+        value = self._grant
+        self._grant = None
+        if isinstance(value, (list, tuple)):
+            return list(value)
+        return [value]
 
     def first(self):
         # Return membership or visit based on what was set

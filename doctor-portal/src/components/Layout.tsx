@@ -412,10 +412,16 @@ export default function Layout() {
   };
 
   const handleFetchPatientDocs = async () => {
-    if (!reqPatientId) return;
+    if (!reqPatientId || !reqHospitalId) {
+      toast.error('Enter both the patient ID and hospital ID before discovering documents.');
+      return;
+    }
     setFetchingDocs(true);
     try {
-      const res = await axios.get(`/api/documents/metadata/${reqPatientId}`, { headers });
+      const res = await axios.get(`/api/documents/metadata/${reqPatientId}`, {
+        headers,
+        params: { hospital_id: parseInt(reqHospitalId) }
+      });
       setAvailableDocs(res.data);
       setSelectedDocs([]);
     } catch (error) {
@@ -453,9 +459,10 @@ export default function Layout() {
 
   const handleDownload = async (docId: number, filename: string) => {
     try {
-      const res = await axios.get(`/api/documents/${docId}/download`, { 
-        headers, 
-        responseType: 'blob' 
+      const res = await axios.get(`/api/documents/${docId}/download`, {
+        headers,
+        responseType: 'blob',
+        params: { purpose: 'TREATMENT' }
       });
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const link = document.createElement('a');
