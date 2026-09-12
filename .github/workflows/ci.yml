@@ -39,6 +39,31 @@ jobs:
         pip install -r requirements.txt
         pip install pytest httpx
 
+    - name: Provision Supabase-compatible browser roles
+      env:
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+      run: |
+        python - <<'PY'
+        import os
+        import psycopg2
+
+        connection = psycopg2.connect(os.environ["DATABASE_URL"])
+        connection.autocommit = True
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE ROLE anon NOLOGIN")
+            cursor.execute("CREATE ROLE authenticated NOLOGIN")
+            cursor.execute("GRANT USAGE ON SCHEMA public TO anon, authenticated")
+            cursor.execute(
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                "GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated"
+            )
+            cursor.execute(
+                "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
+                "GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated"
+            )
+        connection.close()
+        PY
+
     - name: Apply database migrations
       env:
         ENV: test
@@ -62,6 +87,22 @@ jobs:
         SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
+        pytest tests/test_database_integrity.py -v
+
+    - name: Verify latest migrations round-trip and schema drift
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        alembic downgrade 7b2c91e4d6a8
+        alembic upgrade head
+        alembic check
         pytest tests/test_database_integrity.py -v
 
     - name: Run R6 FHIR interoperability verification
