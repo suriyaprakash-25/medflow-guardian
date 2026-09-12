@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { api as axios } from '../lib/api';
 import { useNavigate } from 'react-router-dom';
+import { api as axios, setAccessToken } from '../lib/api';
 
 export default function Login() {
   const [email, setEmail] = useState('patient@demo.com');
@@ -11,7 +11,7 @@ export default function Login() {
   const navigate = useNavigate();
 
   const completeLogin = (accessToken: string) => {
-    localStorage.setItem('token', accessToken);
+    setAccessToken(accessToken);
     setPreAuthToken(null);
     navigate('/dashboard');
   };
@@ -25,7 +25,7 @@ export default function Login() {
       formData.append('password', password);
 
       const response = await axios.post('/api/auth/login', formData, {
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
 
       if (response.data.role !== 'patient') {
@@ -39,7 +39,7 @@ export default function Login() {
       }
 
       completeLogin(response.data.access_token);
-    } catch (err) {
+    } catch {
       setError('Login failed. Please check credentials.');
     }
   };
@@ -52,10 +52,10 @@ export default function Login() {
       const response = await axios.post(
         '/api/auth/mfa/verify',
         { code: mfaCode },
-        { headers: { Authorization: `Bearer ${preAuthToken}` } }
+        { headers: { Authorization: `Bearer ${preAuthToken}` } },
       );
       completeLogin(response.data.access_token);
-    } catch (err) {
+    } catch {
       setError('Invalid or expired MFA code. Please try again.');
     }
   };
@@ -74,7 +74,7 @@ export default function Login() {
                 inputMode="numeric"
                 autoComplete="one-time-code"
                 value={mfaCode}
-                onChange={e => setMfaCode(e.target.value)}
+                onChange={(e) => setMfaCode(e.target.value)}
                 required
               />
             </div>
@@ -85,11 +85,11 @@ export default function Login() {
             {error && <div className="error">{error}</div>}
             <div className="form-group">
               <label>Email</label>
-              <input type="email" value={email} onChange={e => setEmail(e.target.value)} required />
+              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
             </div>
             <div className="form-group">
               <label>Password</label>
-              <input type="password" value={password} onChange={e => setPassword(e.target.value)} required />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
             </div>
             <button type="submit" className="btn-primary">Sign In</button>
           </form>
