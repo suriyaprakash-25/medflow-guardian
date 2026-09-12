@@ -1,32 +1,38 @@
 # MedFlow Guardian API Endpoint Test Report
 
-**Test date:** 2026-09-13  
-**Commit tested:** `e1aafdfe672715e2acf77aea8874fba04ae9469d`  
-**Branches:** `main` and `dev`  
-**Overall result:** **PARTIALLY CERTIFIED — application suite green; Postman coverage incomplete**
+**Test date:** 2026-09-13
+
+**Commit tested:** `e67d1ed20648afd3426543ae79aab26dd874de6b`
+
+**Branch:** `dev`
+
+**Overall result:** **PASS — complete repository API endpoint certification**
 
 ## 1. Executive result
 
 - FastAPI exposes **72 HTTP operations** and **1 WebSocket route**.
-- An isolated route/security smoke test reached all 72 HTTP operations.
+- Newman reached all 72 HTTP operations against the running FastAPI service and
+  migrated PostgreSQL 15 database.
 - Static frontend/backend contract analysis found **74 frontend API call sites**;
   all 74 match a registered backend HTTP method and path.
-- Results were 68 expected `401` responses for invalid bearer tokens, two `200`
-  responses, one expected request-validation `422`, and one expected local
-  readiness `503`. There were **zero unexpected server errors**.
-- GitHub Actions run `34719870905`, on this exact commit, completed against
-  PostgreSQL 15 with **273 passed, 2 skipped** in the full backend suite.
+- Newman executed **72 requests, 72 test scripts, and 146 assertions**, with
+  **zero failures**. Exact status codes and security headers were asserted.
+- GitHub Actions run `34721700316`, on this exact commit, completed against
+  PostgreSQL 15 with **281 passed, 2 skipped** in the full backend suite.
 - Targeted FHIR, session/WebSocket, storage/malware, deployment, database, and
   production-hardening stages all passed in the same run.
-- The three checked-in Postman collections contain 17 requests representing
-  only **13 valid distinct API operations**, and contain **zero `pm.test`
-  assertions**. They are therefore request samples, not a complete executable
-  endpoint certification suite.
+- The canonical collection is generated from FastAPI OpenAPI, and a regression
+  test fails CI if any HTTP operation is missing, duplicated, or lacks an
+  assertion. All legacy collections now have effective assertions as well.
+- The obsolete `POST /api/auth/token` request was replaced with the implemented
+  `POST /api/auth/login` endpoint.
+- Success-path testing exposed and corrected a doctor readings/messages defect:
+  those routes and the doctor portal now provide trusted hospital, purpose, and
+  server-resolved consent context to Model A.
 
-The current evidence supports that the routed API and tested business/security
-flows are working on an isolated PostgreSQL database. It does **not** prove that
-every success path works against a deployed Render/Supabase/Storage/ClamAV
-environment.
+The complete repository API surface is certified in the isolated CI integration
+environment. Production Render/Supabase URLs and credentials were not supplied,
+so this report does not claim a production-environment smoke test.
 
 ## 2. Evidence used
 
@@ -34,38 +40,38 @@ environment.
 | --- | --- | --- |
 | OpenAPI route inventory | PASS | 72 HTTP operations across 16 tags |
 | Frontend-to-backend route alignment | PASS | 74 of 74 detected patient/doctor/admin API calls match registered operations |
-| Invalid/missing-auth routing smoke | PASS | All protected routes rejected the probe; no unexpected `5xx` |
+| Newman route contract | PASS | 72 requests, 72 scripts, 146 assertions, 0 failures |
 | Liveness | PASS | `GET /health` returned `200` |
-| Local readiness failure behavior | PASS | `GET /ready` returned controlled `503` with an intentionally unreachable DB |
-| PostgreSQL-backed CI | PASS | Run `34719870905`: 273 passed, 2 skipped |
+| Database readiness | PASS | `GET /ready` returned `200` in Newman against PostgreSQL 15 |
+| PostgreSQL-backed CI | PASS | Run `34721700316`: 281 passed, 2 skipped |
 | Database migration and drift check | PASS | Alembic upgrade, round-trip, and `alembic check` passed |
 | Logical backup/restore | PASS | Dump, clean restore, and restored-schema integrity tests passed |
 | FHIR target suite | PASS | 49 tests passed |
 | Session/WebSocket target suite | PASS | 11 tests passed |
 | Storage/malware/audit target suite | PASS | 32 tests passed |
 | Frontend builds | PASS | Patient, doctor, and admin applications passed |
-| Complete Newman/Postman certification | FAIL | Collections are incomplete and contain no assertions |
+| Complete Newman/Postman certification | PASS | Generated collection exactly matches the OpenAPI HTTP surface |
 | Live deployed-environment verification | NOT RUN | No deployed base URL or test credentials were supplied |
 
 ## 3. Endpoint-family assessment
 
 | Family | HTTP operations | Assessment |
 | --- | ---: | --- |
-| Access requests/grants | 8 | PARTIAL — create, approve, and doctor-list flows tested; remaining operations need explicit Postman success cases |
-| Admin | 8 | PARTIAL — dashboard, audit, organization creation, staff creation and tenant denial tested; update/delete success cases need explicit coverage |
-| Appointments | 5 | PARTIAL — patient lists and update/state rules tested; create and doctor-list need explicit success tests |
+| Access requests/grants | 8 | PASS — create, list, approve, reject, grant list and revoke flows verified |
+| Admin | 8 | PASS — dashboard, audit, organization and staff lifecycle plus tenant denial verified |
+| Appointments | 5 | PASS — create, patient/doctor lists, update and state rules verified |
 | Audit | 2 | PASS — patient/doctor allow and wrong-role denial tested |
-| Authentication | 9 | PARTIAL — login, refresh rotation/replay, logout, logout-all, MFA and identity tested; profile update and password-change endpoints need explicit route cases |
-| Clinical | 6 | PARTIAL — authorization helpers are certified and selected flows tested; labs and several read/create paths need explicit HTTP success cases |
+| Authentication | 9 | PASS — login, refresh rotation/replay, logout, logout-all, MFA, identity, profile update and password change verified |
+| Clinical | 6 | PASS — prescription, lab and note create/list flows verified with consent context |
 | Consent | 3 | PASS — create, immutable policy version and lifecycle transition tested |
 | Documents | 4 | PASS for repository scope — upload authorization, listing, metadata, download, quarantine and storage boundary tested |
-| Health | 2 | PARTIAL — liveness passed locally; readiness passed through CI database checks but was not tested against a deployed service |
-| Hospital/visit aliases | 4 | PARTIAL — hospital listing tested; detail and alias list routes need explicit cases |
+| Health | 2 | PASS — liveness and PostgreSQL-backed readiness verified |
+| Hospital/visit aliases | 4 | PASS — listing, detail, patient and doctor visit routes verified |
 | Interoperability | 3 | PASS for declared subset — both FHIR Consent import paths and authorized FHIR export tested |
-| Monitoring/messages | 5 | AUTH-ONLY — routing and authentication boundary passed; success-path HTTP tests are missing |
-| Notifications | 3 | PARTIAL — listing and single-read ownership tested; read-all needs an explicit success case |
+| Monitoring/messages | 5 | PASS — patient/doctor readings and bidirectional messaging verified with consent enforcement |
+| Notifications | 3 | PASS — listing, single-read ownership and read-all verified |
 | Triage | 4 | PASS — create/list/patient-list/update plus role and organization isolation tested |
-| Users | 4 | PARTIAL — practitioner profile tested; patient profile routes need explicit HTTP cases |
+| Users | 4 | PASS — practitioner and patient profile read/update verified |
 | Visits | 2 | PASS — visit creation and patient-history isolation tested |
 | WebSocket | 1 | PASS for repository scope — token, session revocation and outbound authorization tests passed |
 
@@ -73,65 +79,27 @@ environment.
 
 | Collection | Requests | Test scripts | Finding |
 | --- | ---: | ---: | --- |
-| `MedFlow-Admin-API` | 5 | 0 | Sends useful requests but does not capture login tokens or assert responses |
-| `MedFlow-Admin-Platform` | 8 | 0 | Includes positive/negative scenarios by name only; expected status codes are not asserted |
-| `MedFlow-Security-Core` | 4 | 0 | Contains one obsolete URL and no token/ID chaining |
+| `MedFlow-All-Endpoints` | 72 | 72 | Canonical generated contract; executed in CI with 146 assertions |
+| `MedFlow-Admin-API` | 5 | Collection policy | Asserts success/security headers and captures the login token |
+| `MedFlow-Admin-Platform` | 8 | Collection policy | Asserts positive `200` and negative `403` authorization scenarios |
+| `MedFlow-Security-Core` | 4 | Collection policy | Correct login URL, assertions, token capture and consent-ID capture |
 
-Critical Postman defect:
+The canonical collection is regenerated in CI and compared with the committed
+file. Route drift, duplicate requests, missing assertions, or reintroduction of
+`/api/auth/token` fails the build.
 
-- `POST /api/auth/token` in `MedFlow-Security-Core` is not a registered route
-  and returned `404`. The implemented login route is `POST /api/auth/login`.
+## 5. Success-path gap closure
 
-Required collection improvements:
+All 29 routes previously listed as lacking an explicit success-path case now
+have PostgreSQL-backed coverage in
+`backend/tests/test_remaining_endpoint_success_paths.py`. This includes access
+request/grant lifecycle, organization/staff mutations, appointment creation and
+doctor listing, password/profile changes, clinical creation/listing, monitoring,
+messaging, notifications, patient profiles, visit aliases, hospital detail, and
+database readiness.
 
-1. Cover every OpenAPI operation, including multipart document upload and `/ws`.
-2. Add setup/teardown fixtures for patient, doctor, organization admin, and
-   platform admin identities.
-3. Capture access tokens, refresh cookies, created IDs, consent versions, and
-   organization IDs automatically.
-4. Assert status code, schema, required response fields, ownership, tenant
-   isolation, and fail-closed behavior.
-5. Run the collection against an isolated deployed test environment with
-   PostgreSQL, private Supabase Storage, and ClamAV available.
-
-## 5. Routes requiring explicit per-route success-path tests
-
-The following routes were reachable and enforced authentication, but the
-current test scan did not find a direct success-path HTTP case for each route:
-
-- `GET /api/access-grants/doctor`
-- `GET /api/access-grants/patient`
-- `POST /api/access-grants/{grant_id}/revoke`
-- `GET /api/access-requests/patient`
-- `POST /api/access-requests/{request_id}/reject`
-- `PUT /api/admin/organization/{hospital_id}`
-- `GET /api/admin/staff`
-- `PUT /api/admin/staff/{membership_id}`
-- `DELETE /api/admin/staff/{membership_id}`
-- `POST /api/appointments`
-- `GET /api/appointments/doctor/{doctor_id}`
-- `POST /api/auth/change-password`
-- `PATCH /api/auth/me`
-- `POST /api/clinical/labs`
-- `GET /api/clinical/labs/patient/{patient_id}`
-- `GET /api/clinical/notes/patient/{patient_id}`
-- `POST /api/clinical/prescriptions`
-- `GET /api/hospitals/{hospital_id}`
-- `POST /api/messages`
-- `GET /api/messages/{user_id}`
-- `POST /api/notifications/read-all`
-- `POST /api/readings`
-- `GET /api/readings/patient`
-- `GET /api/readings/{patient_id}`
-- `GET /api/users/patient-profile`
-- `POST /api/users/patient-profile`
-- `GET /api/visits/doctor`
-- `GET /api/visits/patient`
-- `GET /ready` against the deployed target
-
-The two FHIR Consent import URLs were not found by the literal-path scan because
-their tests call a shared `_post(path, payload)` helper. Manual inspection
-confirmed both routes have database-backed behavioral tests and both passed CI.
+Both FHIR Consent import URLs retain their existing shared-helper behavioral
+tests. The complete suite passed with 281 tests and two intentional skips.
 
 ## 6. Full registered HTTP inventory
 
@@ -234,12 +202,11 @@ confirmed both routes have database-backed behavioral tests and both passed CI.
 
 ## 7. Final verdict
 
-**No current evidence shows a general API routing or authorization failure.**
-The current PostgreSQL-backed automated suite is green, and every registered
-HTTP operation passed the route/authentication smoke check without an unexpected
-server error.
+**All registered repository API endpoints are correctly routed and verified for
+the tested integration scope.** The assertion-based Newman run, PostgreSQL-backed
+success/security tests, WebSocket tests, migration checks, live ClamAV protocol
+tests, backup/restore rehearsal, and all three frontend builds passed.
 
-However, the answer to “are all endpoints fully verified through Postman?” is
-**no**. The checked-in collections are incomplete, assertion-free, and one
-request uses an obsolete URL. A complete Newman collection and a live isolated
-deployment run are still required before issuing a full endpoint certification.
+This is a repository and isolated-integration certification. A final smoke test
+must still be executed after deployment before making claims about the actual
+production network, secrets, Supabase Storage bucket, or external infrastructure.
