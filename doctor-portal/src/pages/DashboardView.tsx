@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
@@ -59,7 +59,6 @@ export default function DashboardView() {
     );
   }
 
-  // Doctor Dashboard
   const criticalCount = requests.filter(r => r.priority === 'Critical' && r.status !== 'Resolved').length;
   const highCount = requests.filter(r => r.priority === 'High' && r.status !== 'Resolved').length;
   const pendingCount = requests.filter(r => r.status === 'pending').length;
@@ -91,8 +90,6 @@ export default function DashboardView() {
 
   return (
     <div className="space-y-6">
-      
-      {/* Overview Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-l-4 border-l-rose-500">
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
@@ -104,7 +101,6 @@ export default function DashboardView() {
             <p className="text-xs text-slate-500 mt-1">Requires immediate attention</p>
           </CardContent>
         </Card>
-        
         <Card className="border-l-4 border-l-amber-500">
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium text-slate-600">High Priority</CardTitle>
@@ -115,7 +111,6 @@ export default function DashboardView() {
             <p className="text-xs text-slate-500 mt-1">Review within 4 hours</p>
           </CardContent>
         </Card>
-
         <Card className="border-l-4 border-l-blue-500">
           <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
             <CardTitle className="text-sm font-medium text-slate-600">Pending Queue</CardTitle>
@@ -128,44 +123,22 @@ export default function DashboardView() {
         </Card>
       </div>
 
-      {/* Triage Queue */}
       <Card className="overflow-hidden">
         <CardHeader className="bg-slate-50/50 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <CardTitle className="text-lg">Triage Queue</CardTitle>
             <p className="text-sm text-slate-500 mt-1">AI-prioritized patient symptom reports.</p>
           </div>
-          
           <div className="flex bg-slate-100 p-1 rounded-lg">
-            <button 
-              onClick={() => setFilter('all')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'all' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              All
-            </button>
-            <button 
-              onClick={() => setFilter('critical')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'critical' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Critical
-            </button>
-            <button 
-              onClick={() => setFilter('pending')}
-              className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'pending' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-            >
-              Pending
-            </button>
+            <button onClick={() => setFilter('all')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'all' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>All</button>
+            <button onClick={() => setFilter('critical')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'critical' ? 'bg-white shadow-sm text-rose-600' : 'text-slate-500 hover:text-slate-700'}`}>Critical</button>
+            <button onClick={() => setFilter('pending')} className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all ${filter === 'pending' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Pending</button>
           </div>
         </CardHeader>
-        
         <CardContent className="p-0">
           {filteredRequests.length === 0 ? (
             <div className="p-12">
-              <EmptyState 
-                icon={<Activity className="h-10 w-10 text-emerald-400" />}
-                title="Queue is clear"
-                description="There are no triage requests matching your current filter."
-              />
+              <EmptyState icon={<Activity className="h-10 w-10 text-emerald-400" />} title="Queue is clear" description="There are no triage requests matching your current filter." />
             </div>
           ) : (
             <div className="divide-y divide-slate-100">
@@ -176,12 +149,11 @@ export default function DashboardView() {
                       {getPriorityBadge(r.priority)}
                       <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
                         <User className="h-4 w-4 text-slate-400" />
-                        Patient #{r.id * 13} {/* Mocking a readable ID based on actual ID */}
+                        Patient #{r.id * 13}
                       </div>
                       <span className="text-slate-300">•</span>
                       {getStatusBadge(r.status)}
                     </div>
-                    
                     <div>
                       <p className="text-sm text-slate-900 font-medium">"{r.symptoms}"</p>
                       {r.ai_reasoning && (
@@ -190,32 +162,15 @@ export default function DashboardView() {
                         </p>
                       )}
                     </div>
-                    
                     <div className="text-[11px] text-slate-400 font-medium uppercase tracking-wider">
                       Submitted: {new Date(r.created_at).toLocaleString([], {dateStyle: 'medium', timeStyle: 'short'})}
                     </div>
                   </div>
-                  
                   <div className="flex flex-wrap items-center gap-2 shrink-0 md:pl-4 md:border-l md:border-slate-100">
                     {r.status !== 'Resolved' && (
                       <>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          onClick={() => updateStatus(r.id, 'Under Review')}
-                          className="h-8 text-xs font-medium"
-                          disabled={r.status === 'Under Review'}
-                        >
-                          Reviewing
-                        </Button>
-                        <Button 
-                          variant="default" 
-                          size="sm" 
-                          onClick={() => updateStatus(r.id, 'Resolved')}
-                          className="h-8 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white"
-                        >
-                          Mark Resolved
-                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => updateStatus(r.id, 'Under Review')} className="h-8 text-xs font-medium" disabled={r.status === 'Under Review'}>Reviewing</Button>
+                        <Button variant="default" size="sm" onClick={() => updateStatus(r.id, 'Resolved')} className="h-8 text-xs font-medium bg-emerald-600 hover:bg-emerald-700 text-white">Mark Resolved</Button>
                       </>
                     )}
                   </div>
