@@ -75,7 +75,7 @@ jobs:
         SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
-        pytest tests/test_malware_scanner.py tests/test_storage_security.py tests/test_malware_quarantine.py -v
+        pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_storage_security.py tests/test_malware_quarantine.py -v
 
     - name: Run Backend Security & Integration Tests
       env:
