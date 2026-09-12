@@ -11,15 +11,32 @@ from app.core.config import settings
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 def create_access_token(
-    subject: Union[str, Any], expires_delta: timedelta = None
+    subject: Union[str, Any],
+    expires_delta: timedelta = None,
+    *,
+    token_type: str = "access",
+    mfa_verified: bool = True,
 ) -> str:
+    """Create a JWT with an explicit authentication-stage claim.
+
+    `access` tokens are usable by protected application endpoints. `preauth`
+    tokens are deliberately restricted to the MFA verification endpoint and
+    must never be accepted as normal bearer credentials.
+    """
+    now = datetime.now(timezone.utc)
     if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
+        expire = now + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
+        expire = now + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {
+        "iat": now,
+        "exp": expire,
+        "sub": str(subject),
+        "token_type": token_type,
+        "mfa_verified": mfa_verified,
+    }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
