@@ -135,6 +135,7 @@ def upload_document(
         
         db.commit()
         db.refresh(doc)
+        db.refresh(notif)
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Database transaction failed: {str(e)}")
@@ -146,7 +147,7 @@ def upload_document(
     )
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "notification_created", "data": {"message": notif.message}},
+        {"type": "notification_created", "data": {"notification_id": notif.id}},
         visit.patient_id
     )
     background_tasks.add_task(mock_malware_scan, doc.id)
