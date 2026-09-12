@@ -103,8 +103,8 @@ def _active_consent(db, *, patient: User, doctor: User, hospital: Hospital):
 
 def test_patient_monitoring_profile_appointment_and_visit_routes(db_session):
     hospital = _hospital(db_session)
-    patient = _user(db_session, email="endpoint-patient@example.test", role="patient")
-    doctor = _user(db_session, email="endpoint-doctor@example.test", role="doctor")
+    patient = _user(db_session, email="endpoint-patient@example.com", role="patient")
+    doctor = _user(db_session, email="endpoint-doctor@example.com", role="doctor")
     _membership(db_session, user=doctor, hospital=hospital)
     _visit(db_session, patient=patient, doctor=doctor, hospital=hospital)
     notification = Notification(
@@ -175,8 +175,8 @@ def test_patient_monitoring_profile_appointment_and_visit_routes(db_session):
 
 def test_clinical_success_routes(db_session):
     hospital = _hospital(db_session, "Clinical Endpoint Hospital")
-    patient = _user(db_session, email="clinical-patient@example.test", role="patient")
-    doctor = _user(db_session, email="clinical-doctor@example.test", role="doctor")
+    patient = _user(db_session, email="clinical-patient@example.com", role="patient")
+    doctor = _user(db_session, email="clinical-doctor@example.com", role="doctor")
     _membership(db_session, user=doctor, hospital=hospital)
     _visit(db_session, patient=patient, doctor=doctor, hospital=hospital)
     _active_consent(db_session, patient=patient, doctor=doctor, hospital=hospital)
@@ -235,8 +235,8 @@ def test_clinical_success_routes(db_session):
 
 def test_access_request_grant_reject_and_revoke_routes(db_session):
     hospital = _hospital(db_session, "Access Endpoint Hospital")
-    patient = _user(db_session, email="access-patient@example.test", role="patient")
-    doctor = _user(db_session, email="access-doctor@example.test", role="doctor")
+    patient = _user(db_session, email="access-patient@example.com", role="patient")
+    doctor = _user(db_session, email="access-doctor@example.com", role="doctor")
     _membership(db_session, user=doctor, hospital=hospital)
     _visit(db_session, patient=patient, doctor=doctor, hospital=hospital)
     patient_headers = _auth(patient)
@@ -282,7 +282,7 @@ def test_access_request_grant_reject_and_revoke_routes(db_session):
 
 
 def test_admin_update_list_and_deactivate_routes(db_session):
-    admin = _user(db_session, email="platform-admin@example.test", role="platform_admin")
+    admin = _user(db_session, email="platform-admin@example.com", role="platform_admin")
     hospital = _hospital(db_session, "Admin Endpoint Hospital")
     headers = _auth(admin)
 
@@ -297,7 +297,7 @@ def test_admin_update_list_and_deactivate_routes(db_session):
         f"/api/admin/staff?hospital_id={hospital.id}",
         headers=headers,
         json={
-            "email": "managed-staff@example.test",
+            "email": "managed-staff@example.com",
             "full_name": "Managed Staff",
             "password": "strong-password-123",
             "role": "doctor",
@@ -321,7 +321,7 @@ def test_admin_update_list_and_deactivate_routes(db_session):
 
 
 def test_auth_profile_password_and_readiness_routes(db_session):
-    user = _user(db_session, email="auth-endpoint@example.test", role="patient")
+    user = _user(db_session, email="auth-endpoint@example.com", role="patient")
     headers = _auth(user)
     updated = client.patch(
         "/api/auth/me", headers=headers, json={"full_name": "Updated Endpoint User"}
