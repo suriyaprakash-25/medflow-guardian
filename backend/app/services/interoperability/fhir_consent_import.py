@@ -40,6 +40,20 @@ FHIR_ACTION_TO_MEDFLOW = {
     "disclose": "download",
 }
 
+# These provision fields can narrow or otherwise materially change disclosure
+# semantics. MedFlow does not yet have a lossless internal representation for
+# them, so silently ignoring them would broaden imported consent. Fail closed.
+UNSUPPORTED_POLICY_FIELDS = {
+    "period",
+    "actor",
+    "securityLabel",
+    "class",
+    "code",
+    "dataPeriod",
+    "data",
+    "provision",
+}
+
 
 def _extract_reference_id(reference: Any, expected_resource: str, field_name: str) -> int:
     if not isinstance(reference, dict):
@@ -89,6 +103,23 @@ def _dedupe(values: Iterable[str]) -> List[str]:
             seen.add(value)
             result.append(value)
     return result
+
+
+def _validate_supported_provision(provision: Dict[str, Any]) -> None:
+    provision_type = provision.get("type")
+    if provision_type == "deny":
+        raise FHIRConsentImportError(
+            "FHIR deny provisions are not yet representable in MedFlow and cannot be imported safely"
+        )
+    if provision_type not in (None, "permit"):
+        raise FHIRConsentImportError(f"Unsupported Consent.provision.type: {provision_type!r}")
+
+    unsupported = sorted(field for field in UNSUPPORTED_POLICY_FIELDS if provision.get(field) not in (None, [], {}))
+    if unsupported:
+        raise FHIRConsentImportError(
+            "FHIR Consent contains policy constraints that MedFlow cannot yet map losslessly: "
+            + ", ".join(unsupported)
+        )
 
 
 def _map_purposes(provision: Dict[str, Any]) -> List[str]:
@@ -165,9 +196,9 @@ def _validate_internal_scope(
             raise FHIRConsentImportError("FHIR Consent references an unknown MedFlow practitioner")
 
     if hospital_id is not None:
-        hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+        hospital = db.query(Hospital).filter(Hospital.id == hospital_id, Hospital.is_active.is_(True)).first()
         if not hospital:
-            raise FHIRConsentImportError("FHIR Consent references an unknown MedFlow organization")
+            raise FHIRConsentImportError("FHIR Consent references an unknown or inactive MedFlow organization")
 
     if doctor_id is not None and hospital_id is not None:
         membership = db.query(HospitalStaff).filter(
@@ -207,6 +238,7 @@ def import_fhir_consent(db: Session, resource: Dict[str, Any]) -> ImportedConsen
     if not isinstance(provision, dict):
         raise FHIRConsentImportError("Consent.provision is required")
 
+    _validate_supported_provision(provision)
     allowed_purposes = _map_purposes(provision)
     allowed_operations = _map_operations(provision)
 
