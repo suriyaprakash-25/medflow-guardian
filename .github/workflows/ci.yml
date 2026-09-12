@@ -51,7 +51,7 @@ jobs:
         cd backend
         alembic upgrade head
 
-    - name: Run Phase 4.1 FHIR Consent import verification
+    - name: Run R6 FHIR interoperability verification
       env:
         TESTING: "True"
         ENV: test
@@ -62,7 +62,7 @@ jobs:
         SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
-        pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_interoperability_auth.py -v
+        pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_fhir_serialization.py tests/test_fhir_export_cae.py tests/test_interoperability_auth.py -v
 
     - name: Run R8 session websocket and proxy security verification
       env:
