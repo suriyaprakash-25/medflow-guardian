@@ -45,6 +45,7 @@ from app.models.document import MedicalDocument
 from app.models.access import DocumentAccessRequest, DocumentAccessGrant
 from app.models.notification import Notification
 from app.models.audit import AuditLog
+from app.models.consent import Consent, ConsentState
 
 
 logger = logging.getLogger(__name__)
@@ -303,21 +304,48 @@ class AuthorizationService:
                 else getattr(ctx.relationship_context, "consent_id", None)
             )
 
+        # Attempted identifiers can legitimately be nonexistent (for example,
+        # an IDOR probe). Audit foreign keys must not turn a clean DENY into a
+        # transaction failure. Keep invalid attempted IDs in metadata while
+        # persisting only identifiers that reference authoritative rows.
+        attempted_ids = {}
+
+        def existing_id(model, value, label):
+            if value is None:
+                return None
+            with self._db.no_autoflush:
+                exists = self._db.query(model.id).filter(model.id == value).first()
+            if not exists:
+                attempted_ids[label] = value
+                return None
+            return value
+
+        organization_id = existing_id(Hospital, ctx.hospital_id, "attempted_organization_id")
+        patient_id = existing_id(User, ctx.patient_id, "attempted_patient_id")
+        audit_consent_id = existing_id(Consent, consent_id, "attempted_consent_id")
+        audit_consent_state_id = existing_id(
+            ConsentState, ctx.consent_state_id, "attempted_consent_state_id"
+        )
+        metadata = {}
+        if decision.detail:
+            metadata["detail"] = decision.detail
+        metadata.update(attempted_ids)
+
         log = AuditLog(
             actor_id=ctx.actor.id,
             actor_role=ctx.actor.role,
-            organization_id=ctx.hospital_id,
-            patient_id=ctx.patient_id,
+            organization_id=organization_id,
+            patient_id=patient_id,
             operation=ctx.operation.value,
             resource_type=ctx.resource_type.value,
             resource_id=resource_id_str,
             purpose=ctx.purpose,
-            consent_id=consent_id,
-            consent_state_id=ctx.consent_state_id,
+            consent_id=audit_consent_id,
+            consent_state_id=audit_consent_state_id,
             policy_version=ctx.policy_version,
             decision="ALLOW" if decision.allowed else "DENY",
             denial_reason=decision.reason.value if decision.reason else None,
-            metadata_json=json.dumps({"detail": decision.detail}) if decision.detail else None,
+            metadata_json=json.dumps(metadata) if metadata else None,
         )
 
         try:

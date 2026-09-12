@@ -38,6 +38,9 @@ messages in `api/websockets.py`.
    consent while retaining CAE role, relationship, and organization checks.
 5. CI now statically rejects a newly introduced resource REST endpoint that does
    not call the CAE directly or through a reviewed boundary helper.
+6. Denials for nonexistent patient, organization, consent, or consent-state IDs
+   preserve attempted identifiers in audit metadata without violating audit-log
+   foreign keys or poisoning the request transaction.
 
 ## Fail-closed rules
 
