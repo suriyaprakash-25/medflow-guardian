@@ -70,6 +70,7 @@ def test_refresh_replay_revokes_current_token_family(db_session):
     )
     assert rotated.status_code == 200
     second_refresh = rotated.cookies.get("refresh_token")
+    rotated_access = rotated.json()["access_token"]
     assert second_refresh and second_refresh != first_refresh
 
     history = db_session.query(RefreshTokenHistory).filter(
@@ -80,6 +81,12 @@ def test_refresh_replay_revokes_current_token_family(db_session):
     ).one()
     assert history.token_family == active_session.token_family
     assert active_session.revoked_at is None
+
+    before_replay = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {rotated_access}"},
+    )
+    assert before_replay.status_code == 200
 
     replay = client.post(
         "/api/auth/refresh",
@@ -95,6 +102,90 @@ def test_refresh_replay_revokes_current_token_family(db_session):
         cookies={"refresh_token": second_refresh},
     )
     assert current_after_replay.status_code == 401
+
+    access_after_replay = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {rotated_access}"},
+    )
+    assert access_after_replay.status_code == 401
+
+
+def test_logout_revokes_session_bound_access_token_and_websocket(db_session):
+    user = _create_user(db_session, email="r8-logout@demo.com")
+
+    login = client.post(
+        "/api/auth/login",
+        data={"username": user.email, "password": "password123"},
+    )
+    assert login.status_code == 200
+    access_token = login.json()["access_token"]
+    refresh_token = login.cookies.get("refresh_token")
+    assert refresh_token
+
+    claims = jwt.decode(
+        access_token,
+        settings.SECRET_KEY,
+        algorithms=[settings.ALGORITHM],
+    )
+    assert isinstance(claims.get("sid"), int)
+
+    before_logout = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert before_logout.status_code == 200
+
+    logout = client.post(
+        "/api/auth/logout",
+        cookies={"refresh_token": refresh_token},
+    )
+    assert logout.status_code == 200
+
+    after_logout = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert after_logout.status_code == 401
+
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect(
+            "/ws",
+            subprotocols=[WS_AUTH_PROTOCOL, access_token],
+        ):
+            pass
+    assert exc.value.code == 1008
+
+
+def test_logout_all_revokes_other_bound_access_sessions(db_session):
+    user = _create_user(db_session, email="r8-logout-all@demo.com", role="doctor")
+
+    first = client.post(
+        "/api/auth/login",
+        data={"username": user.email, "password": "password123"},
+    )
+    second = client.post(
+        "/api/auth/login",
+        data={"username": user.email, "password": "password123"},
+    )
+    assert first.status_code == 200
+    assert second.status_code == 200
+    first_access = first.json()["access_token"]
+    second_access = second.json()["access_token"]
+
+    revoke_all = client.post(
+        "/api/auth/logout-all",
+        headers={"Authorization": f"Bearer {first_access}"},
+    )
+    assert revoke_all.status_code == 200
+
+    assert client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {first_access}"},
+    ).status_code == 401
+    assert client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {second_access}"},
+    ).status_code == 401
 
 
 def test_websocket_rejects_query_string_bearer_token(db_session):
