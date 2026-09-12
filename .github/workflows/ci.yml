@@ -88,7 +88,7 @@ jobs:
         alembic upgrade head
 
     - name: Run P0 database integrity verification
-      env: &test-env
+      env:
         TESTING: "True"
         ENV: test
         DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
@@ -101,7 +101,14 @@ jobs:
         pytest tests/test_database_integrity.py -v
 
     - name: Verify latest migrations round-trip and schema drift
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         alembic downgrade 7b2c91e4d6a8
@@ -110,19 +117,40 @@ jobs:
         pytest tests/test_database_integrity.py -v
 
     - name: Run R6 FHIR interoperability verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_fhir_serialization.py tests/test_fhir_export_cae.py tests/test_interoperability_auth.py -v
 
     - name: Run R8 session websocket and proxy security verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_r8_session_websocket_rate_limit.py -v
 
     - name: Run R7 storage, malware, worker, and audit verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_malware_worker.py tests/test_storage_security.py tests/test_malware_quarantine.py tests/test_authorization_audit_fail_closed.py -v
@@ -156,10 +184,16 @@ jobs:
 
     - name: Run live ClamAV INSTREAM integration tests
       env:
-        <<: *test-env
         CLAMAV_INTEGRATION: "1"
         CLAMAV_HOST: 127.0.0.1
         CLAMAV_PORT: "3310"
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_clamav_integration.py -v
@@ -171,25 +205,53 @@ jobs:
         docker rm -f clamav-r7 || true
 
     - name: Run R9 deployment configuration verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_r9_deployment_configuration.py tests/test_r9_frontend_deployment_contract.py -v
 
     - name: Run P2 AI boundary and configuration verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_p2_medium_security_regressions.py -v
 
     - name: Run P3 production hardening verification
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/test_p3_production_hardening.py -v
 
     - name: Run Backend Security & Integration Tests
-      env: *test-env
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/ -v
