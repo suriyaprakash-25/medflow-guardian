@@ -13,8 +13,51 @@ from app.schemas.consent import (
     ConsentPolicyVersionResponse,
 )
 from app.api.dependencies import get_current_user
+from app.services.authorization import (
+    AuthorizationContext,
+    AuthorizationService,
+    Operation,
+    ResourceType,
+)
 
 router = APIRouter()
+
+CONSENT_MANAGEMENT_PURPOSE = "CONSENT_MANAGEMENT"
+
+
+def _enforce_consent_write(
+    *,
+    db: Session,
+    current_user: User,
+    operation: Operation,
+    patient_id: int,
+    consent: Consent | None = None,
+) -> None:
+    """Authorize a consent mutation through the central authorization engine.
+
+    Consent writes are patient-owned. Platform or organization administration
+    never implies authority to change a patient's consent. This helper keeps the
+    API from re-introducing endpoint-local role exceptions such as the legacy
+    ``current_user.role == "admin"`` bypass.
+    """
+    decision = AuthorizationService(db).authorize(
+        AuthorizationContext(
+            actor=current_user,
+            operation=operation,
+            resource_type=ResourceType.CONSENT,
+            db=db,
+            resource=consent,
+            hospital_id=consent.hospital_id if consent else None,
+            patient_id=patient_id,
+            consent_id=consent.id if consent else None,
+            purpose=CONSENT_MANAGEMENT_PURPOSE,
+        )
+    )
+    if not decision.allowed:
+        detail = decision.detail or (
+            decision.reason.value if decision.reason is not None else "Consent mutation is not authorized"
+        )
+        raise HTTPException(status_code=403, detail=detail)
 
 
 @router.post("/consents", response_model=ConsentResponse)
@@ -23,8 +66,12 @@ def create_consent(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role != "patient":
-        raise HTTPException(status_code=403, detail="Only patients can create consents")
+    _enforce_consent_write(
+        db=db,
+        current_user=current_user,
+        operation=Operation.CREATE,
+        patient_id=current_user.id,
+    )
 
     consent = Consent(
         patient_id=current_user.id,
@@ -70,8 +117,13 @@ def create_policy_version(
     if not consent:
         raise HTTPException(status_code=404, detail="Consent not found")
 
-    if consent.patient_id != current_user.id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to modify this consent")
+    _enforce_consent_write(
+        db=db,
+        current_user=current_user,
+        operation=Operation.UPDATE,
+        patient_id=consent.patient_id,
+        consent=consent,
+    )
 
     latest = db.query(ConsentPolicyVersion).filter(
         ConsentPolicyVersion.consent_id == consent.id
@@ -130,12 +182,22 @@ def transition_consent(
     if not consent:
         raise HTTPException(status_code=404, detail="Consent not found")
 
-    if consent.patient_id != current_user.id and current_user.role != "admin":
-        raise HTTPException(status_code=403, detail="Not authorized to modify this consent")
+    _enforce_consent_write(
+        db=db,
+        current_user=current_user,
+        operation=Operation.UPDATE,
+        patient_id=consent.patient_id,
+        consent=consent,
+    )
 
     valid_transitions = {
         ConsentStatus.DRAFT.value: [ConsentStatus.ACTIVE.value, ConsentStatus.CANCELLED.value],
-        ConsentStatus.ACTIVE.value: [ConsentStatus.SUSPENDED.value, ConsentStatus.REVOKED.value, ConsentStatus.EXPIRED.value, ConsentStatus.SUPERSEDED.value],
+        ConsentStatus.ACTIVE.value: [
+            ConsentStatus.SUSPENDED.value,
+            ConsentStatus.REVOKED.value,
+            ConsentStatus.EXPIRED.value,
+            ConsentStatus.SUPERSEDED.value,
+        ],
         ConsentStatus.SUSPENDED.value: [ConsentStatus.ACTIVE.value, ConsentStatus.REVOKED.value],
     }
     current_status = consent.status
