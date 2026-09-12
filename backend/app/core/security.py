@@ -10,21 +10,41 @@ from app.core.config import settings
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+ACCESS_TOKEN_TYPE = "access"
+PRE_AUTH_TOKEN_TYPE = "pre_auth"
+
+
 def create_access_token(
-    subject: Union[str, Any], expires_delta: timedelta = None
+    subject: Union[str, Any],
+    expires_delta: timedelta = None,
+    *,
+    token_type: str = ACCESS_TOKEN_TYPE,
+    mfa_verified: bool = True,
 ) -> str:
+    """Create a signed JWT with an explicit authentication stage.
+
+    `token_type=pre_auth` tokens are intentionally not valid for ordinary API
+    authorization. They may only be consumed by the MFA verification endpoint.
+    """
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(
             minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES
         )
-    to_encode = {"exp": expire, "sub": str(subject)}
+    to_encode = {
+        "exp": expire,
+        "sub": str(subject),
+        "token_type": token_type,
+        "mfa_verified": mfa_verified,
+    }
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
+
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
@@ -36,6 +56,7 @@ def create_refresh_token() -> str:
     """Generate a secure random string for a refresh token."""
     return secrets.token_urlsafe(64)
 
+
 def hash_refresh_token(token: str) -> str:
     """Hash the refresh token for secure database storage."""
     return hashlib.sha256(token.encode()).hexdigest()
@@ -45,9 +66,11 @@ def hash_refresh_token(token: str) -> str:
 # ---------------------------------------------------------------------------
 _fernet = Fernet(settings.ENCRYPTION_KEY)
 
+
 def encrypt_mfa_secret(secret: str) -> str:
     """Encrypt a TOTP secret before storing it in the database."""
     return _fernet.encrypt(secret.encode()).decode()
+
 
 def decrypt_mfa_secret(encrypted_secret: str) -> str:
     """Decrypt a TOTP secret for verification."""
