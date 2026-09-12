@@ -17,14 +17,8 @@ def db():
         db.close()
 
 def setup_test_data(db):
-    # Clear existing test data
-    db.query(TriageRequest).delete()
-    db.query(Visit).delete()
-    db.query(HospitalStaff).delete()
-    db.query(Hospital).delete()
-    db.query(User).filter(User.email.like("test_%@demo.com")).delete()
-    db.commit()
-
+    # Relies on conftest.py nested transaction rollback to keep DB clean.
+    
     # Create Hospitals
     h1 = Hospital(name="Test Hospital A")
     h2 = Hospital(name="Test Hospital B")
@@ -60,9 +54,8 @@ def setup_test_data(db):
         "patient": patient
     }
 
-def test_triage_isolation():
-    db = SessionLocal()
-    data = setup_test_data(db)
+def test_triage_isolation(db_session):
+    data = setup_test_data(db_session)
     client = TestClient(app)
 
     patient_token = create_access_token("test_patient@demo.com")
@@ -116,11 +109,8 @@ def test_triage_isolation():
     )
     assert res_fail.status_code == 403
 
-    db.close()
-
-def test_websocket_isolation():
-    db = SessionLocal()
-    data = setup_test_data(db)
+def test_websocket_isolation(db_session):
+    data = setup_test_data(db_session)
 
     # Setup clients
     doc_a_token = create_access_token("test_doc_a@demo.com")
@@ -129,8 +119,8 @@ def test_websocket_isolation():
 
     client = TestClient(app)
     
-    with client.websocket_connect(f"/api/ws?token={doc_a_token}") as ws_a:
-        with client.websocket_connect(f"/api/ws?token={doc_b_token}") as ws_b:
+    with client.websocket_connect(f"/ws?token={doc_a_token}") as ws_a:
+        with client.websocket_connect(f"/ws?token={doc_b_token}") as ws_b:
             # Patient submits to Hospital A
             res_a = client.post("/api/triage/", 
                 json={"symptoms": "Emergency A", "hospital_id": data["h1"].id}, 
@@ -153,5 +143,3 @@ def test_websocket_isolation():
             msg_b = ws_b.receive_json()
             assert msg_b["type"] == "triage_update"
             assert msg_b["data"]["hospital_id"] == data["h2"].id
-
-    db.close()

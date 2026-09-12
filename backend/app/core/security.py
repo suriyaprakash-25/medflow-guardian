@@ -2,6 +2,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Union
 from jose import jwt
 from passlib.context import CryptContext
+import secrets
+import hashlib
+from cryptography.fernet import Fernet
 
 from app.core.config import settings
 
@@ -25,3 +28,27 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+# ---------------------------------------------------------------------------
+# Refresh Token Utilities
+# ---------------------------------------------------------------------------
+def create_refresh_token() -> str:
+    """Generate a secure random string for a refresh token."""
+    return secrets.token_urlsafe(64)
+
+def hash_refresh_token(token: str) -> str:
+    """Hash the refresh token for secure database storage."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+# ---------------------------------------------------------------------------
+# MFA Secrets Encryption
+# ---------------------------------------------------------------------------
+_fernet = Fernet(settings.ENCRYPTION_KEY)
+
+def encrypt_mfa_secret(secret: str) -> str:
+    """Encrypt a TOTP secret before storing it in the database."""
+    return _fernet.encrypt(secret.encode()).decode()
+
+def decrypt_mfa_secret(encrypted_secret: str) -> str:
+    """Decrypt a TOTP secret for verification."""
+    return _fernet.decrypt(encrypted_secret.encode()).decode()

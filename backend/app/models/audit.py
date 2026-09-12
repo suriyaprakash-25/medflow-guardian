@@ -7,21 +7,38 @@ class AuditLog(Base):
     __tablename__ = "audit_logs"
 
     id = Column(Integer, primary_key=True, index=True)
-    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Who
+    actor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     actor_role = Column(String, nullable=False)
+    organization_id = Column(Integer, ForeignKey("hospitals.id"), nullable=True, index=True)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    # What
+    operation = Column(String, nullable=False)
+    resource_type = Column(String, nullable=False)
+    resource_id = Column(String, nullable=True, index=True)
     
-    action = Column(String, nullable=False)
+    # Security Context
+    purpose = Column(String, nullable=True)
+    request_id = Column(String, nullable=True, index=True)
+    correlation_id = Column(String, nullable=True, index=True)
     
-    document_id = Column(Integer, ForeignKey("medical_documents.id"), nullable=True)
-    access_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=True)
-    access_grant_id = Column(Integer, ForeignKey("document_access_grants.id"), nullable=True)
+    # Authorization & Consent Trace
+    authorization_id = Column(String, nullable=True)
+    consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True)
+    consent_state_id = Column(Integer, ForeignKey("consent_states.id"), nullable=True)
+    policy_version = Column(Integer, nullable=True)
     
-    status = Column(String, default="success") # success, failure
+    # Enforcement
+    enforcement_point = Column(String, nullable=True)
+    enforcement_state = Column(String, nullable=True)
+    decision = Column(String, nullable=False) # 'ALLOW' or 'DENY'
+    denial_reason = Column(String, nullable=True)
+    
+    # Additional Context
     metadata_json = Column(Text, nullable=True)
     
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     actor = relationship("User", foreign_keys=[actor_id])

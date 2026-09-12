@@ -1,114 +1,210 @@
+import { useEffect, useRef } from 'react';
 import { usePatientContext } from '../components/Layout';
+import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
+import { Button } from '@shared/ui/Button';
+import { Select } from '@shared/ui/Select';
+import { HeartPulse, MessageSquare, Send, PlusCircle } from 'lucide-react';
 
 export default function DashboardView() {
   const { 
     patientVisits, selectedHospitalId, setSelectedHospitalId, symptoms, setSymptoms, 
-    submitting, handleSubmit, vitalsOn, setVitalsOn, readings, activeDoctorId, setActiveDoctorId,
+    submitting, handleSubmit, readings, activeDoctorId, setActiveDoctorId,
     messages, chatInput, setChatInput, sendMessage
   } = usePatientContext();
 
-  return (
-    <div className="dashboard-grid">
-      <div className="column">
-        <section className="card new-request">
-          <h3>Submit New Symptoms</h3>
-          {patientVisits.length === 0 ? (
-            <p>You need at least one hospital visit to request triage.</p>
-          ) : (
-            <form onSubmit={handleSubmit}>
-              <select 
-                value={selectedHospitalId}
-                onChange={e => setSelectedHospitalId(e.target.value)}
-                required
-                style={{ width: '100%', padding: '10px', marginBottom: '10px' }}
-              >
-                <option value="">Select a Hospital</option>
-                {Array.from(new Map(patientVisits.filter(v => v.hospital).map(v => [v.hospital.id, v.hospital])).values()).map(h => (
-                  <option key={h.id} value={h.id}>{h.name}</option>
-                ))}
-              </select>
-              <textarea 
-                value={symptoms} 
-                onChange={e => setSymptoms(e.target.value)} 
-                placeholder="Describe your symptoms..."
-                required
-                rows={4}
-                style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }}
-              />
-              <br/><br/>
-              <button type="submit" className="btn-primary" disabled={submitting}>
-                {submitting ? 'Submitting...' : 'Request Triage'}
-              </button>
-            </form>
-          )}
-        </section>
-      </div>
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
-      <div className="column">
-        <section className="card monitor">
-          <h3>Vitals Monitor</h3>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <p>Simulate hardware readings?</p>
-            <button onClick={() => setVitalsOn(!vitalsOn)} className={vitalsOn ? 'btn-primary' : 'btn-secondary'}>
-              {vitalsOn ? 'Monitor ON' : 'Monitor OFF'}
-            </button>
-          </div>
-          {vitalsOn && <p style={{color: 'var(--priority-high)', fontSize: 12}}>Broadcasting simulated vitals every 5s...</p>}
-          
-          <div style={{marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--border)'}}>
-            <h4>Recent Readings</h4>
-            {readings.length === 0 ? (
-              <p className="empty-state">No past readings.</p>
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const latestReading = readings.length > 0 ? readings[readings.length - 1] : null;
+
+  return (
+    <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      
+      {/* Left/Main Column: Triage & Vitals */}
+      <div className="xl:col-span-2 flex flex-col gap-6">
+        
+        {/* Triage Request Card */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <PlusCircle className="h-5 w-5 text-primary" />
+              Request New Triage
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {patientVisits.length === 0 ? (
+              <div className="p-4 bg-slate-50 text-slate-500 rounded-md text-sm border border-slate-100">
+                You need at least one recorded hospital visit to request triage.
+              </div>
             ) : (
-              <div style={{maxHeight: 200, overflowY: 'auto', fontSize: 14}}>
-                {readings.map(r => (
-                  <div key={r.id} style={{padding: '8px 0', borderBottom: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between'}}>
-                    <span style={{color: 'var(--text-muted)'}}>{new Date(r.created_at).toLocaleTimeString()}</span>
-                    <span>HR: {r.heart_rate} | O2: {r.oxygen_level}% | BP: {r.blood_pressure_sys}/{r.blood_pressure_dia}</span>
-                  </div>
-                ))}
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <Select 
+                  value={selectedHospitalId}
+                  onChange={e => setSelectedHospitalId(e.target.value)}
+                  required
+                >
+                  <option value="">Select a Hospital or Clinic</option>
+                  {Array.from(new Map(patientVisits.filter(v => v.hospital).map(v => [v.hospital.id, v.hospital])).values()).map(h => (
+                    <option key={h.id} value={h.id}>{h.name}</option>
+                  ))}
+                </Select>
+                <textarea 
+                  className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 min-h-[100px]"
+                  value={symptoms} 
+                  onChange={e => setSymptoms(e.target.value)} 
+                  placeholder="Describe your symptoms in detail..."
+                  required
+                />
+                <div className="flex justify-end">
+                  <Button type="submit" disabled={submitting}>
+                    {submitting ? 'Submitting...' : 'Submit Request'}
+                  </Button>
+                </div>
+              </form>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Vitals Summary Card */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <HeartPulse className="h-5 w-5 text-rose-500" />
+              Latest Vitals
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Historic Data Only</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            
+            {latestReading ? (
+              <div className="grid grid-cols-3 gap-4">
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex flex-col items-center justify-center">
+                  <span className="text-sm text-slate-500 mb-1">Heart Rate</span>
+                  <span className="text-2xl font-bold text-slate-900">{latestReading.heart_rate} <span className="text-sm font-normal text-slate-400">bpm</span></span>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex flex-col items-center justify-center">
+                  <span className="text-sm text-slate-500 mb-1">Oxygen</span>
+                  <span className="text-2xl font-bold text-slate-900">{latestReading.oxygen_level} <span className="text-sm font-normal text-slate-400">%</span></span>
+                </div>
+                <div className="p-4 bg-slate-50 rounded-lg border border-slate-100 flex flex-col items-center justify-center">
+                  <span className="text-sm text-slate-500 mb-1">Blood Pressure</span>
+                  <span className="text-2xl font-bold text-slate-900">{latestReading.blood_pressure_sys}/{latestReading.blood_pressure_dia} <span className="text-sm font-normal text-slate-400">mmHg</span></span>
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-slate-400 text-sm">
+                No recent vitals recorded.
               </div>
             )}
-          </div>
-        </section>
-
-        <section className="card chat" style={{marginTop: 24, height: 400, display: 'flex', flexDirection: 'column'}}>
-          <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center'}}>
-            <h3>Chat with Doctor</h3>
-            <select 
-              className="input-field" 
-              style={{width: '200px', margin: 0}}
-              value={activeDoctorId || ''} 
-              onChange={(e) => setActiveDoctorId(Number(e.target.value))}
-            >
-              {patientVisits.map(v => (
-                <option key={v.doctor_id} value={v.doctor_id}>Dr. {v.doctor.full_name}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div style={{flex: 1, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 12, marginBottom: 12, marginTop: 12}}>
-            {messages.map(m => (
-              <div key={m.id} style={{textAlign: m.sender_id === activeDoctorId ? 'left' : 'right', margin: '8px 0'}}>
-                <span style={{
-                  background: m.sender_id === activeDoctorId ? '#e2e8f0' : 'var(--primary)', 
-                  color: m.sender_id === activeDoctorId ? '#0f172a' : 'white',
-                  padding: '8px 12px',
-                  borderRadius: 16,
-                  display: 'inline-block',
-                  maxWidth: '80%'
-                }}>
-                  {m.content}
-                </span>
+            
+            {readings.length > 1 && (
+              <div className="mt-6 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">Previous Readings</h4>
+                <div className="max-h-32 overflow-y-auto pr-2 space-y-2">
+                  {readings.slice(0, -1).reverse().map(r => (
+                    <div key={r.id} className="flex justify-between items-center text-sm py-1 border-b border-slate-50 last:border-0">
+                      <span className="text-slate-400">{new Date(r.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                      <span className="text-slate-700 font-medium">
+                        HR: {r.heart_rate} <span className="mx-1 text-slate-300">|</span> 
+                        O2: {r.oxygen_level}% <span className="mx-1 text-slate-300">|</span> 
+                        BP: {r.blood_pressure_sys}/{r.blood_pressure_dia}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
-            ))}
-          </div>
-          <form onSubmit={sendMessage} style={{display: 'flex', gap: 8}}>
-            <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)} placeholder="Type a message..." disabled={!activeDoctorId} style={{flex: 1, padding: 8}} />
-            <button type="submit" className="btn-primary" style={{width: 'auto'}}>Send</button>
-          </form>
-        </section>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Right Column: Chat Drawer / Panel */}
+      <div className="xl:col-span-1">
+        <Card className="h-[600px] flex flex-col shadow-md border-primary/10">
+          <CardHeader className="border-b border-slate-100 bg-slate-50/50 pb-4">
+            <div className="flex justify-between items-center">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <MessageSquare className="h-5 w-5 text-primary" />
+                Doctor Chat
+              </CardTitle>
+            </div>
+            <div className="mt-4">
+              <Select 
+                value={activeDoctorId || ''} 
+                onChange={(e) => setActiveDoctorId(Number(e.target.value))}
+                className="bg-white"
+              >
+                <option value="" disabled>Select a doctor...</option>
+                {patientVisits.map(v => (
+                  <option key={v.doctor_id} value={v.doctor_id}>Dr. {v.doctor?.full_name}</option>
+                ))}
+              </Select>
+            </div>
+          </CardHeader>
+          
+          <CardContent className="flex-1 overflow-y-auto p-4 flex flex-col gap-3 bg-slate-50/30">
+            {!activeDoctorId ? (
+              <div className="flex-1 flex items-center justify-center text-sm text-slate-400 text-center px-4">
+                Select a doctor from your previous visits to start chatting.
+              </div>
+            ) : messages.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-sm text-slate-400">
+                No messages yet. Say hello!
+              </div>
+            ) : (
+              messages.map(m => {
+                const isMine = m.sender_id !== activeDoctorId;
+                return (
+                  <div key={m.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                    <div 
+                      className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${
+                        isMine 
+                          ? 'bg-blue-600 text-white rounded-br-sm' 
+                          : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
+                      }`}
+                    >
+                      {m.content}
+                    </div>
+                    <span className="text-[10px] text-slate-400 mt-1 px-1">
+                      {new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+            <div ref={messagesEndRef} />
+          </CardContent>
+          
+          <div className="p-4 border-t border-slate-100 bg-white rounded-b-xl">
+            <form onSubmit={sendMessage} className="flex gap-2 relative">
+              <input 
+                type="text" 
+                value={chatInput} 
+                onChange={e => setChatInput(e.target.value)} 
+                placeholder="Type a message..." 
+                className="flex-1 border border-slate-300 rounded-full pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
+                disabled={!activeDoctorId}
+              />
+              <Button 
+                type="submit" 
+                size="icon"
+                className="absolute right-1 top-1 bottom-1 h-auto w-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300 disabled:opacity-50"
+                disabled={!activeDoctorId || !chatInput.trim()}
+                style={{ backgroundColor: (!activeDoctorId || !chatInput.trim()) ? '' : '#2563eb' }}
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </form>
+          </div>
+        </Card>
+      </div>
+
     </div>
   );
 }
+

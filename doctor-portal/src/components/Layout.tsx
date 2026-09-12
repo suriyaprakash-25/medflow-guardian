@@ -1,7 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import axios from 'axios';
+import originalAxios from 'axios';
+import { api as axios } from '../lib/api';
 import { useNavigate, Outlet, Link, useLocation, useOutletContext } from 'react-router-dom';
-
+import { Activity, Users, User, FileText, Lock, Bell, LogOut, Menu, Shield, Calendar } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 export interface TriageRequest {
   id: number;
   symptoms: string;
@@ -34,6 +36,8 @@ export interface VitalReading {
 export interface OutletContextType {
   isAdmin: boolean;
   adminData: any;
+  currentUser: any;
+  setCurrentUser: (user: any) => void;
   
   requests: TriageRequest[];
   fetchQueue: () => Promise<void>;
@@ -109,9 +113,8 @@ export default function Layout() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<any>(null);
 
-  const tokenParts = token ? token.split('.') : [];
-  const currentUser = tokenParts.length === 3 ? JSON.parse(atob(tokenParts[1])) : null;
-  const isAdmin = currentUser?.sub?.includes('admin') || currentUser?.role === 'admin';
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [activePatientId, setActivePatientId] = useState<number | null>(null);
 
@@ -120,7 +123,7 @@ export default function Layout() {
       const res = await axios.get('/api/triage/', { headers });
       setRequests(res.data);
     } catch (error) {
-      if (axios.isAxiosError(error) && error.response?.status === 401) handleLogout();
+      if (originalAxios.isAxiosError(error) && error.response?.status === 401) handleLogout();
     }
   }, [token]);
 
@@ -206,10 +209,22 @@ export default function Layout() {
   }, [token]);
 
   useEffect(() => {
-    if (!token) {
-      navigate('/login');
-      return;
-    }
+    // Token is guaranteed by ProtectedRoute
+    
+    // Fetch authoritative identity from backend
+    axios.get('/api/auth/me', { headers }).then(res => {
+      if (res.data.system_role !== 'doctor' && res.data.role !== 'doctor' && res.data.system_role !== 'admin' && res.data.role !== 'admin') {
+        toast.error('Session mismatch: You are logged in with a non-doctor account. Please log in again.');
+        handleLogout();
+        return;
+      }
+      setCurrentUser(res.data);
+      const adminMembership = res.data.memberships?.find((m: any) => m.role === 'admin');
+      setIsAdmin(!!adminMembership);
+    }).catch(err => {
+      console.error(err);
+      if (err.response?.status === 401 || err.status === 401) handleLogout();
+    });
     
     fetchQueue();
     fetchMessages();
@@ -308,8 +323,9 @@ export default function Layout() {
   const updateStatus = async (id: number, newStatus: string) => {
     try {
       await axios.patch(`/api/triage/${id}/status`, { status: newStatus }, { headers });
+      toast.success(`Triage request marked as ${newStatus}`);
     } catch (error) {
-      alert('Failed to update status.');
+      toast.error('Failed to update status.');
     }
   };
 
@@ -322,8 +338,9 @@ export default function Layout() {
         content: chatInput
       }, { headers });
       setChatInput('');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      toast.error(error.message || 'Failed to send message');
     }
   };
 
@@ -348,12 +365,12 @@ export default function Layout() {
       await axios.post('/api/documents', formData, {
         headers: { ...headers, 'Content-Type': 'multipart/form-data' }
       });
-      alert('Document uploaded successfully!');
+      toast.success('Document uploaded successfully!');
       setUploadTitle('');
       setUploadDesc('');
       setUploadFile(null);
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Upload failed');
+      toast.error(error.response?.data?.detail || 'Upload failed');
     } finally {
       setUploading(false);
     }
@@ -367,7 +384,7 @@ export default function Layout() {
       setAvailableDocs(res.data);
       setSelectedDocs([]);
     } catch (error) {
-      alert('Failed to fetch patient documents metadata');
+      toast.error('Failed to fetch patient documents metadata');
     } finally {
       setFetchingDocs(false);
     }
@@ -375,7 +392,14 @@ export default function Layout() {
 
   const handleRequestAccess = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedDocs.length === 0 || !reqHospitalId) return;
+    if (!reqHospitalId) {
+      toast.error('Please specify your Hospital ID.');
+      return;
+    }
+    if (selectedDocs.length === 0) {
+      toast.error('Please find and select at least one patient document.');
+      return;
+    }
     try {
       await axios.post('/api/access-requests', {
         patient_id: parseInt(reqPatientId),
@@ -383,12 +407,12 @@ export default function Layout() {
         document_ids: selectedDocs,
         reason: reqReason
       }, { headers });
-      alert('Access request submitted');
+      toast.success('Access request submitted');
       setReqReason('');
       setSelectedDocs([]);
       fetchAccessData();
     } catch (error: any) {
-      alert(error.response?.data?.detail || 'Request failed');
+      toast.error(error.response?.data?.detail || 'Request failed');
     }
   };
 
@@ -405,8 +429,12 @@ export default function Layout() {
       document.body.appendChild(link);
       link.click();
       link.parentNode?.removeChild(link);
-    } catch (error) {
-      alert('Failed to download document. Access may be expired or denied.');
+    } catch (error: any) {
+      if (error.status === 403) {
+        toast.error('Access Denied: The patient has revoked consent or the policy has changed.', { duration: 6000 });
+      } else {
+        toast.error('Failed to download document. ' + (error.message || ''));
+      }
     }
   };
 
@@ -423,6 +451,7 @@ export default function Layout() {
     try {
       await axios.post(`/api/notifications/read-all`, {}, { headers });
       fetchPhase4Data();
+      toast.success('All notifications marked as read');
     } catch (error) {
       console.error(error);
     }
@@ -431,7 +460,7 @@ export default function Layout() {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const contextValue: OutletContextType = {
-    isAdmin, adminData,
+    isAdmin, adminData, currentUser, setCurrentUser,
     requests, fetchQueue, updateStatus,
     activePatientId, setActivePatientId, doctorVisits,
     messages, chatInput, setChatInput, sendMessage,
@@ -443,80 +472,124 @@ export default function Layout() {
   };
 
   const navItems = isAdmin 
-    ? [{ path: '/dashboard', label: 'Admin Dashboard' }] 
+    ? [{ path: '/dashboard', label: 'Admin Dashboard', icon: Shield }] 
     : [
-        { path: '/dashboard', label: 'Triage Queue' },
-        { path: '/patients', label: 'My Patients' },
-        { path: '/patient-details', label: 'Patient Details' },
-        { path: '/upload-report', label: 'Upload Report' },
-        { path: '/access-control', label: 'Access Control' },
-        { path: '/profile', label: 'Profile' },
-        { path: '/notifications', label: 'Notifications', badge: unreadCount },
+        { path: '/dashboard', label: 'Triage Queue', icon: Activity },
+        { path: '/appointments', label: 'Appointments', icon: Calendar },
+        { path: '/patients', label: 'My Patients', icon: Users },
+        { path: '/patient-details', label: 'Patient Details', icon: User },
+        { path: '/upload-report', label: 'Upload Report', icon: FileText },
+        { path: '/access-control', label: 'Access Control', icon: Lock },
+        { path: '/profile', label: 'Profile', icon: User },
+        { path: '/notifications', label: 'Notifications', badge: unreadCount, icon: Bell },
       ];
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', background: '#f8fafc' }}>
+    <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
       {/* Sidebar Layout */}
-      <div style={{ width: '250px', background: '#0f172a', color: 'white', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px' }}>
-          <h2 style={{ margin: 0, fontSize: '1.2rem', color: '#10b981' }}>MedFlow Guardian</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>{isAdmin ? 'Admin Portal' : 'Doctor Portal'}</p>
+      <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0 shadow-xl z-10">
+        <div className="p-6">
+          <div className="flex items-center gap-3 text-primary">
+            <div className="bg-primary/20 p-2 rounded-lg">
+              <Shield className="h-6 w-6 text-blue-400" />
+            </div>
+            <div>
+              <h2 className="m-0 text-lg font-bold text-white tracking-tight">MedFlow</h2>
+              <p className="m-0 text-[11px] text-slate-400 font-medium tracking-widest uppercase">
+                {isAdmin ? 'Admin Portal' : 'Doctor Portal'}
+              </p>
+            </div>
+          </div>
         </div>
         
-        <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '4px', padding: '10px 0' }}>
-          {navItems.map(item => (
-            <Link 
-              key={item.path} 
-              to={item.path} 
-              style={{
-                padding: '12px 20px', 
-                color: location.pathname === item.path ? 'white' : '#cbd5e1', 
-                background: location.pathname === item.path ? '#1e293b' : 'transparent',
-                textDecoration: 'none',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                borderLeft: location.pathname === item.path ? '4px solid #10b981' : '4px solid transparent'
-              }}
-            >
-              {item.label}
-              {!!item.badge && (
-                <span style={{ background: '#ef4444', color: 'white', fontSize: '0.7rem', padding: '2px 6px', borderRadius: '12px' }}>
-                  {item.badge}
-                </span>
-              )}
-            </Link>
-          ))}
+        <nav className="flex-1 flex flex-col gap-1.5 px-3 py-4 overflow-y-auto">
+          <div className="px-3 mb-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Clinical Workspace</p>
+          </div>
+          {navItems.map(item => {
+            const isActive = location.pathname === item.path;
+            const Icon = item.icon;
+            return (
+              <Link 
+                key={item.path} 
+                to={item.path} 
+                className={`flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group ${
+                  isActive 
+                    ? 'bg-blue-600 text-white shadow-md' 
+                    : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Icon className={`h-5 w-5 transition-colors ${isActive ? 'text-white' : 'text-slate-400 group-hover:text-blue-400'}`} />
+                  <span className="text-sm font-medium">{item.label}</span>
+                </div>
+                {!!item.badge && (
+                  <span className="bg-rose-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                    {item.badge}
+                  </span>
+                )}
+              </Link>
+            )
+          })}
         </nav>
 
-        <div style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
-            <div style={{
-              width: '10px', height: '10px', borderRadius: '50%',
-              background: wsStatus === 'connected' ? '#10b981' : (wsStatus === 'connecting' ? '#f59e0b' : '#ef4444')
-            }}></div>
-            <span style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
-              {wsStatus === 'connected' ? 'Live' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline')}
+        <div className="p-4 border-t border-slate-800/50 bg-slate-900/50">
+          <div className="flex items-center gap-2 mb-4 px-2">
+            <div className="relative flex h-2.5 w-2.5">
+              {wsStatus === 'connected' && (
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              )}
+              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${wsStatus === 'connected' ? 'bg-emerald-500' : (wsStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500')}`}></span>
+            </div>
+            <span className="text-xs text-slate-400 font-medium tracking-wide">
+              {wsStatus === 'connected' ? 'System Live & Synced' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline - Reconnecting')}
             </span>
           </div>
           <button 
             onClick={handleLogout} 
-            style={{ width: '100%', background: 'transparent', border: '1px solid #334155', color: '#e2e8f0', padding: '8px', borderRadius: '6px', cursor: 'pointer' }}
+            className="flex w-full items-center justify-center gap-2 bg-transparent border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-medium"
           >
-            Logout
+            <LogOut className="h-4 w-4" />
+            Sign Out
           </button>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        <header style={{ background: 'white', padding: '16px 24px', borderBottom: '1px solid #e2e8f0', display: 'flex', alignItems: 'center' }}>
-          <h1 style={{ margin: 0, fontSize: '1.25rem', color: '#0f172a' }}>
-            {location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-          </h1>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10 sticky top-0">
+          <div className="flex items-center gap-4">
+            <button className="md:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors">
+              <Menu className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="m-0 text-xl font-bold text-slate-900 tracking-tight">
+                {location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+              </h1>
+            </div>
+          </div>
+          
+          <div className="flex items-center gap-6">
+            <div className="hidden md:flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm font-semibold text-slate-900 leading-none">
+                  Dr. {currentUser?.full_name || currentUser?.email || 'User'}
+                </p>
+                <p className="text-xs text-slate-500 mt-1 font-medium">
+                  General Hospital
+                </p>
+              </div>
+              <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm">
+                <User className="h-5 w-5 text-blue-600" />
+              </div>
+            </div>
+          </div>
         </header>
-        <main style={{ flex: 1, padding: '24px', overflowY: 'auto' }}>
-          <Outlet context={contextValue} />
+        
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50 relative">
+          <div className="mx-auto max-w-7xl animate-in fade-in duration-500">
+            <Outlet context={contextValue} />
+          </div>
         </main>
       </div>
     </div>

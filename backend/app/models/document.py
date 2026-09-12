@@ -17,10 +17,10 @@ class MedicalDocument(Base):
     __tablename__ = "medical_documents"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
-    uploaded_by_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    visit_id = Column(Integer, ForeignKey("visits.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
+    uploaded_by_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    visit_id = Column(Integer, ForeignKey("visits.id"), nullable=False, index=True)
     
     document_type = Column(String, nullable=False)
     title = Column(String, nullable=False)
@@ -31,6 +31,7 @@ class MedicalDocument(Base):
     mime_type = Column(String, nullable=False)
     file_size = Column(Integer, nullable=False)
     checksum = Column(String, nullable=True)
+    scan_status = Column(String, server_default="pending", nullable=False) # pending, clean, malicious
     
     status = Column(String, default="active") # active, archived
     

@@ -4,7 +4,7 @@ import os
 
 async def test_documents():
     print("--- Testing Phase 2 Documents ---")
-    async with httpx.AsyncClient(base_url="http://localhost:8080") as client:
+    async with httpx.AsyncClient(base_url="http://localhost:8000") as client:
         # 1. Login
         p_resp = await client.post("/api/auth/login", data={"username": "patient@demo.com", "password": "password"})
         patient_token = p_resp.json()["access_token"]

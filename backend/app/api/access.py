@@ -9,6 +9,7 @@ from app.models.user import User
 from app.models.hospital import HospitalStaff
 from app.models.document import MedicalDocument
 from app.models.access import DocumentAccessRequest, DocumentAccessGrant
+from app.models.consent import Consent, ConsentPolicyVersion, ConsentState
 from app.models.audit import AuditLog
 from app.models.notification import Notification
 from app.api.websockets import manager
@@ -16,7 +17,7 @@ from app.schemas.access import (
     AccessRequestCreate, AccessRequestResponse, 
     AccessRequestApprove, AccessRequestReject, AccessGrantResponse
 )
-from app.api.dependencies import get_current_user, get_current_patient, get_current_doctor
+from app.api.dependencies import get_current_user, get_patient_identity, get_practitioner_identity
 
 router = APIRouter()
 
@@ -25,11 +26,15 @@ def create_access_request(
     request_data: AccessRequestCreate,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor)
+    current_doctor: User = Depends(get_practitioner_identity)
 ):
     # Verify doctor is affiliated with the requested hospital
-    affiliations = db.query(HospitalStaff).filter(HospitalStaff.user_id == current_doctor.id).all()
-    if request_data.hospital_id not in [aff.hospital_id for aff in affiliations]:
+    membership = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == current_doctor.id,
+        HospitalStaff.hospital_id == request_data.hospital_id,
+        HospitalStaff.is_active == True
+    ).first()
+    if not membership:
         raise HTTPException(status_code=403, detail="Not authorized to request on behalf of this hospital")
 
     # Verify documents belong to patient
@@ -58,10 +63,12 @@ def create_access_request(
     audit = AuditLog(
         actor_id=current_doctor.id,
         actor_role="doctor",
-        hospital_id=request_data.hospital_id,
+        organization_id=request_data.hospital_id,
         patient_id=request_data.patient_id,
-        action="access requested",
-        access_request_id=access_req.id
+        operation="request_access",
+        resource_type="access_request",
+        resource_id=str(access_req.id),
+        decision="ALLOW"
     )
     db.add(audit)
 
@@ -90,7 +97,7 @@ def create_access_request(
 @router.get("/access-requests/doctor", response_model=List[AccessRequestResponse])
 def get_doctor_requests(
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor)
+    current_doctor: User = Depends(get_practitioner_identity)
 ):
     requests = db.query(DocumentAccessRequest).filter(
         DocumentAccessRequest.requesting_doctor_id == current_doctor.id
@@ -101,7 +108,7 @@ def get_doctor_requests(
 def get_patient_requests(
     status: str = None,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     query = db.query(DocumentAccessRequest).filter(
         DocumentAccessRequest.patient_id == current_patient.id
@@ -116,19 +123,21 @@ def approve_request(
     approval_data: AccessRequestApprove,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     # Verify durations (1, 4, 24, 96 hours)
     if approval_data.duration_hours not in [1, 4, 24, 96]:
         raise HTTPException(status_code=400, detail="Invalid expiry duration")
 
-    req = db.query(DocumentAccessRequest).filter(
-        DocumentAccessRequest.id == request_id,
-        DocumentAccessRequest.patient_id == current_patient.id
+    # Phase 8: Concurrency Control - Lock the request to prevent duplicate approvals
+    req = db.query(DocumentAccessRequest).with_for_update().filter(
+        DocumentAccessRequest.id == request_id
     ).first()
     
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    if req.patient_id != current_patient.id:
+        raise HTTPException(status_code=403, detail="Not authorized to approve this request")
     if req.status != "pending":
         raise HTTPException(status_code=400, detail=f"Request is already {req.status}")
 
@@ -136,14 +145,40 @@ def approve_request(
     req.status = "approved"
     req.responded_at = datetime.utcnow()
 
-    # Validate selected docs
-    approved_docs = db.query(MedicalDocument).filter(
-        MedicalDocument.id.in_(approval_data.document_ids),
-        MedicalDocument.patient_id == current_patient.id
-    ).all()
+    # Validate selected docs (if any were provided)
+    approved_docs = []
+    if approval_data.document_ids:
+        approved_docs = db.query(MedicalDocument).filter(
+            MedicalDocument.id.in_(approval_data.document_ids),
+            MedicalDocument.patient_id == current_patient.id
+        ).all()
 
-    if not approved_docs:
-        raise HTTPException(status_code=400, detail="No valid documents selected")
+    # Phase 5: Create Governance Entities (Consent, Policy, State)
+    consent = Consent(
+        patient_id=current_patient.id,
+        doctor_id=req.requesting_doctor_id,
+        hospital_id=req.requesting_hospital_id,
+        status="active"
+    )
+    db.add(consent)
+    db.flush()
+
+    policy = ConsentPolicyVersion(
+        consent_id=consent.id,
+        version_number=1,
+        policy_payload={"allowed_purposes": ["TREATMENT"], "allowed_operations": ["READ", "DOWNLOAD"]},
+        status="active"
+    )
+    db.add(policy)
+    db.flush()
+
+    state = ConsentState(
+        consent_id=consent.id,
+        policy_version_id=policy.id,
+        status="active"
+    )
+    db.add(state)
+    db.flush()
 
     # Create Grant
     expires_at = datetime.utcnow() + timedelta(hours=approval_data.duration_hours)
@@ -153,6 +188,7 @@ def approve_request(
         patient_id=current_patient.id,
         doctor_id=req.requesting_doctor_id,
         hospital_id=req.requesting_hospital_id,
+        consent_id=consent.id,
         status="active",
         expires_at=expires_at
     )
@@ -166,11 +202,14 @@ def approve_request(
     audit = AuditLog(
         actor_id=current_patient.id,
         actor_role="patient",
-        hospital_id=req.requesting_hospital_id,
+        organization_id=req.requesting_hospital_id,
         patient_id=current_patient.id,
-        action="access approved",
-        access_request_id=req.id,
-        access_grant_id=grant.id
+        operation="grant_access",
+        resource_type="access_request",
+        resource_id=str(req.id),
+        consent_id=consent.id,
+        consent_state_id=state.id,
+        decision="ALLOW"
     )
     db.add(audit)
 
@@ -202,15 +241,17 @@ def reject_request(
     reject_data: AccessRequestReject,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
-    req = db.query(DocumentAccessRequest).filter(
-        DocumentAccessRequest.id == request_id,
-        DocumentAccessRequest.patient_id == current_patient.id
+    # Phase 8: Concurrency Control - Lock the request
+    req = db.query(DocumentAccessRequest).with_for_update().filter(
+        DocumentAccessRequest.id == request_id
     ).first()
     
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
+    if req.patient_id != current_patient.id:
+        raise HTTPException(status_code=403, detail="Not authorized to reject this request")
     if req.status != "pending":
         raise HTTPException(status_code=400, detail=f"Request is already {req.status}")
 
@@ -222,10 +263,12 @@ def reject_request(
     audit = AuditLog(
         actor_id=current_patient.id,
         actor_role="patient",
-        hospital_id=req.requesting_hospital_id,
+        organization_id=req.requesting_hospital_id,
         patient_id=current_patient.id,
-        action="access rejected",
-        access_request_id=req.id
+        operation="reject_access",
+        resource_type="access_request",
+        resource_id=str(req.id),
+        decision="ALLOW"
     )
     db.add(audit)
 
@@ -256,9 +299,10 @@ def revoke_grant(
     grant_id: int,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
-    grant = db.query(DocumentAccessGrant).filter(
+    # Phase 8: Concurrency Control - Lock the grant to prevent concurrent revocations
+    grant = db.query(DocumentAccessGrant).with_for_update().filter(
         DocumentAccessGrant.id == grant_id,
         DocumentAccessGrant.patient_id == current_patient.id
     ).first()
@@ -271,6 +315,25 @@ def revoke_grant(
     grant.status = "revoked"
     grant.revoked_at = datetime.utcnow()
     
+    # Phase 5: Update Authoritative Consent State
+    if grant.consent_id:
+        # Phase 8: Lock the consent row to serialize state transitions
+        consent = db.query(Consent).with_for_update().filter(Consent.id == grant.consent_id).first()
+        if consent:
+            consent.status = "revoked"
+            # Get latest policy
+            policy = db.query(ConsentPolicyVersion).filter(
+                ConsentPolicyVersion.consent_id == consent.id,
+                ConsentPolicyVersion.status == "active"
+            ).first()
+            if policy:
+                state = ConsentState(
+                    consent_id=consent.id,
+                    policy_version_id=policy.id,
+                    status="revoked"
+                )
+                db.add(state)
+    
     # Also update the request status for clarity
     if grant.request:
         grant.request.status = "revoked"
@@ -279,10 +342,13 @@ def revoke_grant(
     audit = AuditLog(
         actor_id=current_patient.id,
         actor_role="patient",
-        hospital_id=grant.hospital_id,
+        organization_id=grant.hospital_id,
         patient_id=current_patient.id,
-        action="access revoked",
-        access_grant_id=grant.id
+        operation="revoke_access",
+        resource_type="access_grant",
+        resource_id=str(grant.id),
+        consent_id=grant.consent_id,
+        decision="ALLOW"
     )
     db.add(audit)
 
@@ -310,7 +376,7 @@ def revoke_grant(
 @router.get("/access-grants/patient", response_model=List[AccessGrantResponse])
 def get_patient_grants(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     return db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.patient_id == current_patient.id
@@ -319,7 +385,7 @@ def get_patient_grants(
 @router.get("/access-grants/doctor", response_model=List[AccessGrantResponse])
 def get_doctor_grants(
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor)
+    current_doctor: User = Depends(get_practitioner_identity)
 ):
     grants = db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.doctor_id == current_doctor.id
@@ -327,8 +393,9 @@ def get_doctor_grants(
 
     # Automatically mark expired grants as such in memory for the response
     # (A background job or access-check handles true expiration, but for UI clarity we check it here)
+    from datetime import timezone
     for g in grants:
-        if g.status == "active" and g.expires_at < datetime.utcnow():
+        if g.status == "active" and g.expires_at < datetime.now(timezone.utc):
             g.status = "expired"
     
     return grants

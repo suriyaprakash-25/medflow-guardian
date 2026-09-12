@@ -6,9 +6,13 @@ from app.core.database import get_db
 from app.models.triage import TriageRequest
 from app.models.user import User
 from app.schemas.triage import TriageRequest as TriageRequestSchema, TriageRequestCreate, TriageRequestUpdate
-from app.api.dependencies import get_current_patient, get_current_doctor
+from app.api.dependencies import get_patient_identity, get_practitioner_identity, get_authorization_service
 from app.ai.triage_engine import analyze_symptoms
 from app.api.websockets import manager
+from app.services.authorization import (
+    AuthorizationService, AuthorizationContext, Operation, ResourceType
+)
+
 
 router = APIRouter()
 
@@ -16,7 +20,7 @@ router = APIRouter()
 async def submit_triage_request(
     request_in: TriageRequestCreate,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     # Analyze symptoms using the mock AI engine
     ai_result = analyze_symptoms(request_in.symptoms)
@@ -40,6 +44,7 @@ async def submit_triage_request(
         "data": {
             "id": db_request.id,
             "patient_id": db_request.patient_id,
+            "hospital_id": db_request.hospital_id,
             "patient_name": current_patient.full_name,
             "status": db_request.status,
             "priority": db_request.priority,
@@ -55,7 +60,7 @@ async def submit_triage_request(
 @router.get("/", response_model=List[TriageRequestSchema])
 def list_triage_requests(
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor),
+    current_doctor: User = Depends(get_practitioner_identity),
     status: str = None
 ):
     from app.models.hospital import HospitalStaff
@@ -78,7 +83,7 @@ def list_triage_requests(
 @router.get("/patient", response_model=List[TriageRequestSchema])
 def list_patient_triage_requests(
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_current_patient)
+    current_patient: User = Depends(get_patient_identity)
 ):
     query = db.query(TriageRequest).filter(TriageRequest.patient_id == current_patient.id)
     return query.order_by(TriageRequest.created_at.desc()).all()
@@ -88,21 +93,24 @@ async def update_triage_status(
     id: int,
     request_in: TriageRequestUpdate,
     db: Session = Depends(get_db),
-    current_doctor: User = Depends(get_current_doctor)
+    current_doctor: User = Depends(get_practitioner_identity),
+    auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
     db_request = db.query(TriageRequest).filter(TriageRequest.id == id).first()
     if not db_request:
         raise HTTPException(status_code=404, detail="Triage request not found")
 
-    from app.models.hospital import HospitalStaff
-    active_affiliation = db.query(HospitalStaff).filter(
-        HospitalStaff.user_id == current_doctor.id,
-        HospitalStaff.hospital_id == db_request.hospital_id,
-        HospitalStaff.is_active == True
-    ).first()
-    if not active_affiliation:
-        raise HTTPException(status_code=403, detail="Not authorized for this hospital's triage requests")
-    
+    # Central Authorization — doctor must be active member of the triage's hospital
+    decision = auth_svc.authorize(AuthorizationContext(
+        actor=current_doctor,
+        operation=Operation.UPDATE_STATUS,
+        resource_type=ResourceType.TRIAGE_REQUEST,
+        db=db,
+        resource=db_request
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail)
+
     db_request.status = request_in.status
     db.commit()
     db.refresh(db_request)
@@ -118,3 +126,4 @@ async def update_triage_status(
     await manager.broadcast_to_hospital(payload, "doctor", db_request.hospital_id)
 
     return db_request
+

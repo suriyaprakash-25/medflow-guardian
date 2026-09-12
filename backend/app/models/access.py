@@ -21,9 +21,9 @@ class DocumentAccessRequest(Base):
     __tablename__ = "document_access_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    requesting_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    requesting_hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    requesting_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    requesting_hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
     
     reason = Column(Text, nullable=False)
     status = Column(String, default="pending") # pending, approved, rejected, cancelled, expired
@@ -45,10 +45,11 @@ class DocumentAccessGrant(Base):
     __tablename__ = "document_access_grants"
 
     id = Column(Integer, primary_key=True, index=True)
-    access_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=False)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    access_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=False, index=True)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
+    consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True) # Phase 5: Nullable initially for migration, then should be strict
     
     status = Column(String, default="active") # active, revoked, expired
     
@@ -60,5 +61,6 @@ class DocumentAccessGrant(Base):
     patient = relationship("User", foreign_keys=[patient_id])
     doctor = relationship("User", foreign_keys=[doctor_id])
     hospital = relationship("Hospital")
+    consent = relationship("Consent")
     
     granted_documents = relationship("MedicalDocument", secondary=access_grant_documents)

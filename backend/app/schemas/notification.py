@@ -19,15 +19,29 @@ class AuditLogSchema(BaseModel):
     id: int
     actor_id: int
     actor_role: str
-    hospital_id: Optional[int] = None
+    organization_id: Optional[int] = None
     patient_id: Optional[int] = None
-    action: str
-    document_id: Optional[int] = None
-    access_request_id: Optional[int] = None
-    access_grant_id: Optional[int] = None
-    status: str
+    
+    operation: str
+    resource_type: str
+    resource_id: Optional[str] = None
+    
+    purpose: Optional[str] = None
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    
+    authorization_id: Optional[str] = None
+    consent_id: Optional[int] = None
+    consent_state_id: Optional[int] = None
+    policy_version: Optional[int] = None
+    
+    enforcement_point: Optional[str] = None
+    enforcement_state: Optional[str] = None
+    decision: str
+    denial_reason: Optional[str] = None
+    
     metadata_json: Optional[str] = None
-    created_at: datetime
+    timestamp: datetime
 
     class Config:
         from_attributes = True

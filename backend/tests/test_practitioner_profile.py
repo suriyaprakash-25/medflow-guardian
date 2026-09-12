@@ -14,11 +14,8 @@ def db():
         db.close()
 
 def setup_test_data(db):
-    # Clear existing test data
-    db.query(PractitionerProfile).delete()
-    db.query(User).filter(User.email == "test_doctor_profile@demo.com").delete()
-    db.commit()
-
+    # Relies on conftest.py nested transaction rollback to keep DB clean.
+    
     # Create User
     doc = User(email="test_doctor_profile@demo.com", hashed_password="pw", role="doctor", full_name="Doc Profile Test", is_active=True)
     db.add(doc)
@@ -27,9 +24,8 @@ def setup_test_data(db):
 
     return {"doc": doc}
 
-def test_practitioner_profile():
-    db = SessionLocal()
-    data = setup_test_data(db)
+def test_practitioner_profile(db_session):
+    data = setup_test_data(db_session)
     client = TestClient(app)
 
     token = create_access_token("test_doctor_profile@demo.com")
@@ -65,5 +61,3 @@ def test_practitioner_profile():
     res_post2 = client.post("/api/users/practitioner-profile", json=payload_update, headers=headers)
     assert res_post2.status_code == 200
     assert res_post2.json()["specialty"] == "Neurology"
-
-    db.close()

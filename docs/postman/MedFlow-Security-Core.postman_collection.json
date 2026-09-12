@@ -1,0 +1,77 @@
+{
+  "info": {
+    "name": "MedFlow-Security-Core",
+    "description": "Postman Collection for verifying MedFlow Guardian Security Controls (Phase A.1).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Auth - Login",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "body": {
+          "mode": "urlencoded",
+          "urlencoded": [
+            {"key": "username", "value": "{{patient_email}}", "type": "text"},
+            {"key": "password", "value": "{{patient_password}}", "type": "text"}
+          ]
+        },
+        "url": {
+          "raw": "{{base_url}}/api/auth/token",
+          "host": ["{{base_url}}"],
+          "path": ["api", "auth", "token"]
+        }
+      }
+    },
+    {
+      "name": "Consent - Create",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{patient_token}}"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"hospital_id\": 1, \"allowed_purposes\": [\"TREATMENT\"], \"allowed_operations\": [\"read\"]}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": {
+          "raw": "{{base_url}}/api/consents",
+          "host": ["{{base_url}}"],
+          "path": ["api", "consents"]
+        }
+      }
+    },
+    {
+      "name": "Consent - Transition to REVOKED",
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{patient_token}}"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\"target_status\": \"REVOKED\", \"reason\": \"Patient requested revocation\"}",
+          "options": {"raw": {"language": "json"}}
+        },
+        "url": {
+          "raw": "{{base_url}}/api/consents/{{consent_id}}/transition",
+          "host": ["{{base_url}}"],
+          "path": ["api", "consents", "{{consent_id}}", "transition"]
+        }
+      }
+    },
+    {
+      "name": "Protected Resource - Authorized Access",
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{doctor_token}}"}],
+        "url": {
+          "raw": "{{base_url}}/api/documents/{{document_id}}/download?purpose=TREATMENT",
+          "host": ["{{base_url}}"],
+          "path": ["api", "documents", "{{document_id}}", "download"],
+          "query": [
+            {"key": "purpose", "value": "TREATMENT"}
+          ]
+        }
+      }
+    }
+  ]
+}
