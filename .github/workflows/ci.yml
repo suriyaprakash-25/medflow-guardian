@@ -116,6 +116,45 @@ jobs:
         alembic check
         pytest tests/test_database_integrity.py -v
 
+    - name: Rehearse PostgreSQL backup and restore
+      env:
+        PGPASSWORD: password
+        RESTORED_DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_restore
+        TESTING: "True"
+        ENV: test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        python - <<'PY'
+        import psycopg2
+
+        connection = psycopg2.connect(
+            "postgresql://medflow:password@localhost:5432/postgres"
+        )
+        connection.autocommit = True
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE DATABASE medflow_restore")
+        connection.close()
+        PY
+        docker run --rm --network host \
+          -e PGPASSWORD \
+          -v "${{ runner.temp }}:/backup" \
+          postgres:15 \
+          pg_dump --host 127.0.0.1 --username medflow --dbname medflow_test \
+            --format custom --file /backup/medflow-ci.dump
+        docker run --rm --network host \
+          -e PGPASSWORD \
+          -v "${{ runner.temp }}:/backup" \
+          postgres:15 \
+          pg_restore --host 127.0.0.1 --username medflow \
+            --dbname medflow_restore --exit-on-error /backup/medflow-ci.dump
+        cd backend
+        DATABASE_URL="$RESTORED_DATABASE_URL" alembic check
+        DATABASE_URL="$RESTORED_DATABASE_URL" \
+          pytest tests/test_database_integrity.py -v
+
     - name: Run R6 FHIR interoperability verification
       env:
         TESTING: "True"
