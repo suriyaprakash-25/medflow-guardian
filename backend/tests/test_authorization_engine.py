@@ -5,8 +5,6 @@ Tests the AuthorizationService directly without HTTP.
 Covers: DEFAULT DENY, role enforcement, ownership, organization isolation,
 relationship requirements, all resource types.
 """
-import pytest
-from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
 from app.services.authorization import (
@@ -18,7 +16,7 @@ from app.services.authorization import (
     ResourceType,
 )
 from app.models.user import User
-from app.models.hospital import HospitalStaff, Hospital, Visit
+from app.models.hospital import HospitalStaff
 from app.models.document import MedicalDocument
 from app.models.access import DocumentAccessRequest, DocumentAccessGrant
 from app.models.notification import Notification
