@@ -17,8 +17,9 @@ class ConsentStateResponse(BaseModel):
     consent_id: int
     policy_version_id: int
     status: str
+    reason: Optional[str] = None
     created_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -30,6 +31,6 @@ class ConsentResponse(BaseModel):
     status: str
     created_at: datetime
     updated_at: Optional[datetime]
-    
+
     class Config:
         from_attributes = True
