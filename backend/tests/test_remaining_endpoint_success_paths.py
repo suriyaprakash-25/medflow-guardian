@@ -107,6 +107,7 @@ def test_patient_monitoring_profile_appointment_and_visit_routes(db_session):
     doctor = _user(db_session, email="endpoint-doctor@example.com", role="doctor")
     _membership(db_session, user=doctor, hospital=hospital)
     _visit(db_session, patient=patient, doctor=doctor, hospital=hospital)
+    _active_consent(db_session, patient=patient, doctor=doctor, hospital=hospital)
     notification = Notification(
         user_id=patient.id,
         type="endpoint-test",
@@ -140,7 +141,13 @@ def test_patient_monitoring_profile_appointment_and_visit_routes(db_session):
     )
     assert reading.status_code == 200, reading.text
     assert client.get("/api/readings/patient", headers=patient_headers).status_code == 200
-    assert client.get(f"/api/readings/{patient.id}", headers=doctor_headers).status_code == 200
+    assert client.get(
+        f"/api/readings/{patient.id}", headers=doctor_headers
+    ).status_code == 422
+    governed_query = f"?hospital_id={hospital.id}&purpose=TREATMENT"
+    assert client.get(
+        f"/api/readings/{patient.id}{governed_query}", headers=doctor_headers
+    ).status_code == 200
 
     sent = client.post(
         "/api/messages",
@@ -148,7 +155,12 @@ def test_patient_monitoring_profile_appointment_and_visit_routes(db_session):
         json={"receiver_id": doctor.id, "content": "Endpoint validation"},
     )
     assert sent.status_code == 200, sent.text
-    history = client.get(f"/api/messages/{patient.id}", headers=doctor_headers)
+    assert client.get(
+        f"/api/messages/{patient.id}", headers=doctor_headers
+    ).status_code == 403
+    history = client.get(
+        f"/api/messages/{patient.id}{governed_query}", headers=doctor_headers
+    )
     assert history.status_code == 200, history.text
 
     assert client.post("/api/notifications/read-all", headers=patient_headers).status_code == 200

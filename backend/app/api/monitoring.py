@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -13,6 +13,7 @@ from app.api.websockets import manager
 from app.services.authorization import (
     AuthorizationService, AuthorizationContext, Operation, ResourceType
 )
+from app.services.consent_context import resolve_active_scoped_consent
 
 router = APIRouter()
 
@@ -77,16 +78,27 @@ def get_patient_own_readings(
 @router.get("/readings/{patient_id}", response_model=List[PatientReadingSchema])
 def get_readings(
     patient_id: int,
+    purpose: str = Query(..., min_length=1),
+    hospital_id: int = Query(..., gt=0),
     db: Session = Depends(get_db),
     current_doctor: User = Depends(get_practitioner_identity),
     auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
+    consent = resolve_active_scoped_consent(
+        db,
+        patient_id=patient_id,
+        doctor_id=current_doctor.id,
+        hospital_id=hospital_id,
+    )
     decision = auth_svc.authorize(AuthorizationContext(
         actor=current_doctor,
         operation=Operation.LIST,
         resource_type=ResourceType.PATIENT_READING,
         db=db,
-        patient_id=patient_id  # engine verifies visit relationship
+        patient_id=patient_id,
+        hospital_id=hospital_id,
+        purpose=purpose,
+        consent_id=consent.id if consent else None,
     ))
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)
@@ -96,17 +108,38 @@ def get_readings(
 @router.post("/messages", response_model=MessageSchema)
 async def send_message(
     msg_in: MessageCreate,
+    purpose: str | None = Query(None, min_length=1),
+    hospital_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
     auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
+    patient_id = current_user.id if current_user.role == "patient" else msg_in.receiver_id
+    consent_id = None
+    if current_user.role == "doctor":
+        if hospital_id is None or purpose is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor messaging requires hospital_id and explicit purpose",
+            )
+        consent = resolve_active_scoped_consent(
+            db,
+            patient_id=patient_id,
+            doctor_id=current_user.id,
+            hospital_id=hospital_id,
+        )
+        consent_id = consent.id if consent else None
+
     decision = auth_svc.authorize(AuthorizationContext(
         actor=current_user,
         operation=Operation.CREATE,
         resource_type=ResourceType.MESSAGE,
         db=db,
-        patient_id=current_user.id if current_user.role == "patient" else msg_in.receiver_id,
-        relationship_context=msg_in.receiver_id
+        patient_id=patient_id,
+        hospital_id=hospital_id,
+        purpose=purpose,
+        consent_id=consent_id,
+        relationship_context=msg_in.receiver_id,
     ))
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)
@@ -137,17 +170,38 @@ async def send_message(
 @router.get("/messages/{user_id}", response_model=List[MessageSchema])
 def get_messages(
     user_id: int,
+    purpose: str | None = Query(None, min_length=1),
+    hospital_id: int | None = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
     auth_svc: AuthorizationService = Depends(get_authorization_service)
 ):
+    patient_id = current_user.id if current_user.role == "patient" else user_id
+    consent_id = None
+    if current_user.role == "doctor":
+        if hospital_id is None or purpose is None:
+            raise HTTPException(
+                status_code=403,
+                detail="Doctor messaging requires hospital_id and explicit purpose",
+            )
+        consent = resolve_active_scoped_consent(
+            db,
+            patient_id=patient_id,
+            doctor_id=current_user.id,
+            hospital_id=hospital_id,
+        )
+        consent_id = consent.id if consent else None
+
     decision = auth_svc.authorize(AuthorizationContext(
         actor=current_user,
         operation=Operation.LIST,
         resource_type=ResourceType.MESSAGE,
         db=db,
-        patient_id=current_user.id if current_user.role == "patient" else user_id,
-        relationship_context=user_id
+        patient_id=patient_id,
+        hospital_id=hospital_id,
+        purpose=purpose,
+        consent_id=consent_id,
+        relationship_context=user_id,
     ))
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)

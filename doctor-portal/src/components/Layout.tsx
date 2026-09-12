@@ -204,6 +204,7 @@ export default function Layout() {
   const [currentUser, setCurrentUser] = useState<DoctorUser | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [activePatientId, setActivePatientId] = useState<number | null>(null);
+  const [doctorVisits, setDoctorVisits] = useState<DoctorVisit[]>([]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -229,23 +230,33 @@ export default function Layout() {
 
   const fetchMessages = useCallback(async () => {
     if (!activePatientId) return;
+    const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
+    if (!activeVisit) return;
     try {
-      const res = await axios.get(`/api/messages/${activePatientId}`, { headers });
+      const res = await axios.get(`/api/messages/${activePatientId}`, {
+        headers,
+        params: { hospital_id: activeVisit.hospital_id, purpose: 'TREATMENT' },
+      });
       setMessages(res.data);
     } catch (error) {
       console.error(error);
     }
-  }, [activePatientId, headers]);
+  }, [activePatientId, doctorVisits, headers]);
 
   const fetchReadings = useCallback(async () => {
     if (!activePatientId) return;
+    const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
+    if (!activeVisit) return;
     try {
-      const res = await axios.get(`/api/readings/${activePatientId}`, { headers });
+      const res = await axios.get(`/api/readings/${activePatientId}`, {
+        headers,
+        params: { hospital_id: activeVisit.hospital_id, purpose: 'TREATMENT' },
+      });
       setHistoricalReadings(res.data);
     } catch (error) {
       console.error(error);
     }
-  }, [activePatientId, headers]);
+  }, [activePatientId, doctorVisits, headers]);
 
   const [uploadVisitId, setUploadVisitId] = useState('');
   const [uploadType, setUploadType] = useState('prescription');
@@ -253,8 +264,6 @@ export default function Layout() {
   const [uploadDesc, setUploadDesc] = useState('');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [doctorVisits, setDoctorVisits] = useState<DoctorVisit[]>([]);
-
   const fetchDoctorVisits = useCallback(async () => {
     try {
       const res = await axios.get('/api/visits/doctor', { headers });
@@ -488,11 +497,19 @@ export default function Layout() {
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activePatientId) return;
+    const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
+    if (!activeVisit) {
+      toast.error('An active patient visit is required to send a message.');
+      return;
+    }
     try {
       await axios.post('/api/messages', {
         receiver_id: activePatientId,
         content: chatInput,
-      }, { headers });
+      }, {
+        headers,
+        params: { hospital_id: activeVisit.hospital_id, purpose: 'TREATMENT' },
+      });
       setChatInput('');
     } catch (error) {
       console.error(error);
