@@ -31,7 +31,9 @@ class MedicalDocument(Base):
     mime_type = Column(String, nullable=False)
     file_size = Column(Integer, nullable=False)
     checksum = Column(String, nullable=True)
-    scan_status = Column(String, server_default="pending", nullable=False) # pending, clean, malicious
+    # Only "clean" is releasable. pending, malicious, scan_error, and any
+    # unrecognized value remain quarantined by the download enforcement path.
+    scan_status = Column(String, server_default="pending", nullable=False)
     
     status = Column(String, default="active") # active, archived
     

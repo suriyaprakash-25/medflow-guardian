@@ -1,5 +1,5 @@
-import asyncio
-import io
+import json
+import logging
 from typing import List, Optional
 
 from fastapi import (
@@ -13,7 +13,6 @@ from fastapi import (
     Request,
     UploadFile,
 )
-from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import (
@@ -37,26 +36,17 @@ from app.services.authorization import (
     Operation,
     ResourceType,
 )
+from app.services.malware import (
+    SCAN_CLEAN,
+    SCAN_ERROR,
+    SCAN_MALICIOUS,
+    SCAN_PENDING,
+    scan_document,
+)
 from app.services.consent_context import resolve_active_document_grant
 from app.services.storage import storage_service
 
-
-async def mock_malware_scan(document_id: int):
-    # R7 replaces this mock with a real isolated scanner. Until then the route
-    # keeps existing quarantine behavior unchanged.
-    await asyncio.sleep(5)
-    from app.core.database import SessionLocal
-
-    db = SessionLocal()
-    try:
-        doc = db.query(MedicalDocument).filter(MedicalDocument.id == document_id).first()
-        if doc:
-            doc.scan_status = "clean"
-            db.commit()
-    finally:
-        db.close()
-
-
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 ALLOWED_MIME_TYPES = {
@@ -68,6 +58,50 @@ ALLOWED_MIME_TYPES = {
     "application/msword",
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+
+def _commit_security_audit(db: Session, audit: AuditLog) -> None:
+    """Persist an enforcement audit before any protected bytes are released.
+
+    Audit failure is a release failure. This deliberately fails closed instead of
+    swallowing the database error and serving PHI without durable evidence.
+    """
+
+    try:
+        db.add(audit)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("Security audit persistence failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Security audit is temporarily unavailable; document release denied",
+        ) from exc
+
+
+def _download_release_audit(
+    *,
+    current_user: User,
+    doc: MedicalDocument,
+    allowed: bool,
+    denial_reason: Optional[str] = None,
+    purpose: Optional[str] = None,
+    consent_id: Optional[int] = None,
+) -> AuditLog:
+    return AuditLog(
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        organization_id=doc.hospital_id,
+        patient_id=doc.patient_id,
+        operation="download_release",
+        resource_type="document",
+        resource_id=str(doc.id),
+        purpose=purpose,
+        consent_id=consent_id,
+        decision="ALLOW" if allowed else "DENY",
+        denial_reason=denial_reason,
+        metadata_json=json.dumps({"scan_status": doc.scan_status}),
+    )
 
 
 @router.post("/documents", response_model=DocumentUploadResponse)
@@ -84,10 +118,12 @@ def upload_document(
     current_doctor: User = Depends(get_practitioner_identity),
     auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
+    # 1. Validate visit
     visit = db.query(Visit).filter(Visit.id == visit_id).first()
     if not visit:
         raise HTTPException(status_code=404, detail="Visit not found")
 
+    # 2. Central Authorization — must be active member of visit's hospital
     decision = auth_svc.authorize(
         AuthorizationContext(
             actor=current_doctor,
@@ -100,8 +136,11 @@ def upload_document(
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)
 
+    # 3. Validate file type and size
     if file.content_type not in ALLOWED_MIME_TYPES:
-        raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid file type: {file.content_type}"
+        )
 
     file.file.seek(0, 2)
     file_size = file.file.tell()
@@ -113,6 +152,9 @@ def upload_document(
     if document_type not in [item.value for item in DocumentType]:
         raise HTTPException(status_code=400, detail="Invalid document type")
 
+    # 4. Save file to private storage. If the database transaction later fails,
+    # R7 performs a compensating delete so protected orphan objects are not left
+    # behind indefinitely.
     storage_path = storage_service.upload_document(file, visit.patient_id)
 
     try:
@@ -128,9 +170,10 @@ def upload_document(
             stored_filename=storage_path,
             mime_type=file.content_type,
             file_size=file_size,
+            scan_status=SCAN_PENDING,
         )
         db.add(doc)
-        db.flush()
+        db.flush()  # Get doc.id without committing
 
         audit = AuditLog(
             actor_id=current_doctor.id,
@@ -155,24 +198,38 @@ def upload_document(
         db.commit()
         db.refresh(doc)
         db.refresh(notif)
-    except Exception as e:
+    except Exception as exc:
         db.rollback()
+        try:
+            storage_service.delete_document(storage_path)
+        except Exception:
+            # The original database failure still determines the HTTP result, but
+            # cleanup failure is logged for operations/incident response.
+            logger.exception(
+                "Compensating deletion failed for storage_path=%s", storage_path
+            )
+        logger.exception("Document metadata transaction failed")
         raise HTTPException(
             status_code=500,
-            detail=f"Database transaction failed: {str(e)}",
-        )
+            detail="Document upload could not be finalized",
+        ) from exc
 
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "document_uploaded", "data": {"document_id": doc.id, "title": doc.title}},
+        {
+            "type": "document_uploaded",
+            "data": {"document_id": doc.id, "title": doc.title},
+        },
         visit.patient_id,
     )
     background_tasks.add_task(
         manager.send_personal_message,
         {"type": "notification_created", "data": {"notification_id": notif.id}},
-        visit.patient_id
+        visit.patient_id,
     )
-    background_tasks.add_task(mock_malware_scan, doc.id)
+    # R7: real ClamAV-backed scan. Scanner/storage failures become scan_error;
+    # they never auto-promote an upload to clean.
+    background_tasks.add_task(scan_document, doc.id)
 
     return {
         "id": doc.id,
@@ -205,14 +262,6 @@ def list_patient_document_metadata(
     current_doctor: User = Depends(get_practitioner_identity),
     auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    """Return pre-consent document metadata for the access-request workflow.
-
-    This is intentionally a discovery surface, not a PHI-content release. The
-    backend establishes organization membership through the CAE and independently
-    requires an existing doctor-patient visit in that same hospital. Results are
-    hospital-scoped so a relationship in one tenant never reveals another tenant's
-    document inventory.
-    """
     decision = auth_svc.authorize(
         AuthorizationContext(
             actor=current_doctor,
@@ -223,10 +272,7 @@ def list_patient_document_metadata(
         )
     )
     if not decision.allowed:
-        raise HTTPException(
-            status_code=403,
-            detail=decision.detail or str(decision.reason),
-        )
+        raise HTTPException(status_code=403, detail=decision.detail)
 
     has_visit = (
         db.query(Visit)
@@ -243,26 +289,29 @@ def list_patient_document_metadata(
             detail="Not authorized to discover documents for this patient in this organization",
         )
 
-    return (
-        db.query(MedicalDocument)
-        .filter(
-            MedicalDocument.patient_id == patient_id,
-            MedicalDocument.hospital_id == hospital_id,
-        )
-        .all()
+    # Allowed to list metadata (without content) so doctors can request access.
+    query = db.query(MedicalDocument).filter(
+        MedicalDocument.patient_id == patient_id,
+        MedicalDocument.hospital_id == hospital_id,
     )
+    return query.all()
 
 
 @router.get("/documents/{document_id}/download")
 def download_document(
     document_id: int,
     background_tasks: BackgroundTasks,
-    purpose: Optional[str] = Query(None),
+    purpose: Optional[str] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    doc = db.query(MedicalDocument).filter(MedicalDocument.id == document_id).first()
+    # Load resource before authorization (404 masks existence for unauthorized callers).
+    doc = (
+        db.query(MedicalDocument)
+        .filter(MedicalDocument.id == document_id)
+        .first()
+    )
 
     if not current_user or not current_user.is_active:
         raise HTTPException(status_code=401, detail="Authentication required")
@@ -280,8 +329,6 @@ def download_document(
             document=doc,
         )
 
-    # The client never supplies consent authority. For practitioners, the
-    # consent_id is derived only from the exact unexpired server-side grant.
     decision = auth_svc.authorize(
         AuthorizationContext(
             actor=current_user,
@@ -293,6 +340,7 @@ def download_document(
             patient_id=doc.patient_id if doc else None,
             purpose=purpose,
             consent_id=(trusted_grant.consent_id if trusted_grant else None),
+            relationship_context=trusted_grant,
         )
     )
     if not decision.allowed:
@@ -301,35 +349,92 @@ def download_document(
             detail=decision.detail,
         )
 
-    if doc.scan_status == "pending":
+    # Malware enforcement is independent of authorization. Only an explicit
+    # scanner-confirmed clean state may release bytes; every other state fails closed.
+    if doc.scan_status != SCAN_CLEAN:
+        reason = "malware_quarantine"
+        _commit_security_audit(
+            db,
+            _download_release_audit(
+                current_user=current_user,
+                doc=doc,
+                allowed=False,
+                denial_reason=reason,
+                purpose=purpose,
+                consent_id=(trusted_grant.consent_id if trusted_grant else None),
+            ),
+        )
+        if doc.scan_status == SCAN_MALICIOUS:
+            raise HTTPException(
+                status_code=403, detail="Document blocked: malware detected"
+            )
+        if doc.scan_status == SCAN_PENDING:
+            raise HTTPException(
+                status_code=403,
+                detail="Document is currently in quarantine pending malware scan",
+            )
+        if doc.scan_status == SCAN_ERROR:
+            raise HTTPException(
+                status_code=403,
+                detail="Document remains quarantined because malware scanning could not be completed",
+            )
         raise HTTPException(
             status_code=403,
-            detail="Document is currently in quarantine pending malware scan",
+            detail="Document remains quarantined because its scan state is not releasable",
         )
-    if doc.scan_status == "malicious":
-        raise HTTPException(status_code=403, detail="Document blocked: malware detected")
-
-    audit = AuditLog(
-        actor_id=current_user.id,
-        actor_role=current_user.role,
-        organization_id=doc.hospital_id,
-        patient_id=doc.patient_id,
-        operation="DOWNLOAD",
-        resource_type="document",
-        resource_id=str(doc.id),
-        purpose=purpose,
-        consent_id=trusted_grant.consent_id if trusted_grant else None,
-        decision="ALLOW",
-    )
-    db.add(audit)
-    db.commit()
 
     try:
         file_bytes = storage_service.download_document(doc.stored_filename)
-        return StreamingResponse(
-            io.BytesIO(file_bytes),
-            media_type=doc.mime_type,
-            headers={"Content-Disposition": f'attachment; filename="{doc.original_filename}"'},
+    except HTTPException:
+        _commit_security_audit(
+            db,
+            _download_release_audit(
+                current_user=current_user,
+                doc=doc,
+                allowed=False,
+                denial_reason="storage_unavailable",
+                purpose=purpose,
+                consent_id=(trusted_grant.consent_id if trusted_grant else None),
+            ),
         )
+        raise
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+        _commit_security_audit(
+            db,
+            _download_release_audit(
+                current_user=current_user,
+                doc=doc,
+                allowed=False,
+                denial_reason="storage_unavailable",
+                purpose=purpose,
+                consent_id=(trusted_grant.consent_id if trusted_grant else None),
+            ),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Document storage is temporarily unavailable",
+        ) from exc
+
+    # Commit both the CAE authorization audit already flushed by AuthorizationService
+    # and the final enforcement/release result before returning protected bytes.
+    _commit_security_audit(
+        db,
+        _download_release_audit(
+            current_user=current_user,
+            doc=doc,
+            allowed=True,
+            purpose=purpose,
+            consent_id=(trusted_grant.consent_id if trusted_grant else None),
+        ),
+    )
+
+    from fastapi.responses import StreamingResponse
+    import io
+
+    return StreamingResponse(
+        io.BytesIO(file_bytes),
+        media_type=doc.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{doc.original_filename}"'
+        },
+    )
