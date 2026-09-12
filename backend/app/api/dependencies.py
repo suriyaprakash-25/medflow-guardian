@@ -30,16 +30,14 @@ def _credentials_exception() -> HTTPException:
 
 
 def _session_is_active(db: Session, *, session_id: int, user_id: int) -> bool:
-    record = db.query(AuthSession).filter(
+    """Check live server-side session state without relying on ORM object cache."""
+    active = db.query(AuthSession.id).filter(
         AuthSession.id == session_id,
         AuthSession.user_id == user_id,
+        AuthSession.revoked_at == None,
+        AuthSession.expires_at > datetime.now(timezone.utc),
     ).first()
-    if not record or record.revoked_at is not None:
-        return False
-    expires_at = record.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    return expires_at > datetime.now(timezone.utc)
+    return active is not None
 
 
 def _load_identity_from_token(
