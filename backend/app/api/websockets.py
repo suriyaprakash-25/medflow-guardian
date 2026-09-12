@@ -10,7 +10,7 @@ from jose import jwt, JWTError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.api.dependencies import get_db
+from app.api.dependencies import get_db, _session_is_active
 from app.models.user import User
 
 router = APIRouter()
@@ -22,6 +22,7 @@ WS_AUTH_PROTOCOL = "medflow.jwt"
 class WebSocketPrincipal:
     user: User
     expires_at: datetime
+    session_id: Optional[int] = None
 
 
 class ConnectionManager:
@@ -288,15 +289,14 @@ def verify_token(token: str, db: Session) -> Optional[WebSocketPrincipal]:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         email = payload.get("sub")
         expires_at_raw = payload.get("exp")
+        token_type = payload.get("token_type")
+        mfa_verified = payload.get("mfa_verified")
+        session_id = payload.get("sid")
         if not isinstance(email, str) or not isinstance(expires_at_raw, (int, float)):
             return None
-
-        # Compose safely with the separate R1 token-stage remediation: once those
-        # claims are present, a pre-auth token can never establish a WebSocket.
-        token_type = payload.get("token_type")
-        if token_type is not None and token_type != "access":
+        if token_type != "access" or mfa_verified is not True:
             return None
-        if payload.get("mfa_verified") is False:
+        if session_id is not None and not isinstance(session_id, int):
             return None
 
         expires_at = datetime.fromtimestamp(expires_at_raw, tz=timezone.utc)
@@ -308,7 +308,15 @@ def verify_token(token: str, db: Session) -> Optional[WebSocketPrincipal]:
     user = db.query(User).filter(User.email == email).first()
     if not user or not user.is_active:
         return None
-    return WebSocketPrincipal(user=user, expires_at=expires_at)
+    if session_id is not None and not _session_is_active(
+        db, session_id=session_id, user_id=user.id
+    ):
+        return None
+    return WebSocketPrincipal(
+        user=user,
+        expires_at=expires_at,
+        session_id=session_id,
+    )
 
 
 @router.websocket("/ws")
@@ -339,15 +347,29 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
             if seconds_remaining <= 0:
                 await websocket.close(code=1008, reason="Access token expired")
                 break
+
+            if principal.session_id is not None and not _session_is_active(
+                db,
+                session_id=principal.session_id,
+                user_id=user.id,
+            ):
+                await websocket.close(code=1008, reason="Session revoked")
+                break
+
+            # Bound sessions are revalidated periodically even when the socket is
+            # idle, so logout/logout-all/password-change revocation propagates to
+            # realtime access without waiting for the JWT expiry boundary.
+            wait_timeout = min(seconds_remaining, 30.0)
             try:
-                # Even an idle socket is closed at the JWT expiration boundary.
                 await asyncio.wait_for(
                     websocket.receive_text(),
-                    timeout=seconds_remaining,
+                    timeout=wait_timeout,
                 )
             except asyncio.TimeoutError:
-                await websocket.close(code=1008, reason="Access token expired")
-                break
+                if wait_timeout >= seconds_remaining:
+                    await websocket.close(code=1008, reason="Access token expired")
+                    break
+                continue
     except WebSocketDisconnect:
         pass
     finally:
