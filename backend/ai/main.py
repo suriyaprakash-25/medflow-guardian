@@ -7,10 +7,13 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from ai.routes.safety_routes import router as safety_router
+
 from ai.routes.fraud_routes import router as fraud_router
+from ai.routes.safety_routes import router as safety_router
+from app.api.dependencies import get_current_active_user
+from app.core.config import settings
 
 app = FastAPI(
     title="MedFlow Guardian AI Intelligence Layer",
@@ -18,26 +21,38 @@ app = FastAPI(
         "Rule-based intelligence engine checking duplicate medications, "
         "allergy conflicts, drug-drug interactions, and prescribing fraud patterns."
     ),
-    version="1.0.0"
+    version="1.0.0",
 )
 
-# Configure CORS (permissible origins allowed for hackathon/testing flexibility)
+# The standalone AI process is not a separate trust boundary. It reuses the
+# MedFlow browser-origin allowlist and authenticated identity dependency rather
+# than exposing an anonymous or wildcard-CORS API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.FRONTEND_CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
-# Mount APIRouters under the '/ai' prefix
-app.include_router(safety_router, prefix="/ai")
-app.include_router(fraud_router, prefix="/ai")
+protected_ai_dependencies = [Depends(get_current_active_user)]
+app.include_router(
+    safety_router,
+    prefix="/ai",
+    dependencies=protected_ai_dependencies,
+)
+app.include_router(
+    fraud_router,
+    prefix="/ai",
+    dependencies=protected_ai_dependencies,
+)
+
 
 @app.get("/health", tags=["health"])
 async def health_check():
-    """Simple API health probe."""
+    """Public liveness probe that exposes no patient or clinical data."""
     return {"status": "ok", "module": "ai_intelligence_layer"}
+
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
