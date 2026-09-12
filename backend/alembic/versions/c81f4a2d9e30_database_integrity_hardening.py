@@ -25,8 +25,6 @@ depends_on: Union[str, Sequence[str], None] = None
 FK_INDEXES = (
     ("ix_access_grant_documents_document_id", "access_grant_documents", "document_id"),
     ("ix_access_request_documents_document_id", "access_request_documents", "document_id"),
-    ("ix_audit_logs_organization_id", "audit_logs", "organization_id"),
-    ("ix_audit_logs_consent_id", "audit_logs", "consent_id"),
     ("ix_audit_logs_consent_state_id", "audit_logs", "consent_state_id"),
     ("ix_appointments_patient_id", "appointments", "patient_id"),
     ("ix_appointments_doctor_id", "appointments", "doctor_id"),
