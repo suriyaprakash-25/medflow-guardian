@@ -154,7 +154,7 @@ def upgrade() -> None:
         BEGIN
             IF NEW.consent_id IS DISTINCT FROM OLD.consent_id
                 OR NEW.version_number IS DISTINCT FROM OLD.version_number
-                OR NEW.policy_payload IS DISTINCT FROM OLD.policy_payload
+                OR NEW.policy_payload::jsonb IS DISTINCT FROM OLD.policy_payload::jsonb
                 OR NEW.created_at IS DISTINCT FROM OLD.created_at
             THEN
                 RAISE EXCEPTION 'consent policy version content is immutable'
