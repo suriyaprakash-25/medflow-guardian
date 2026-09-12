@@ -120,6 +120,7 @@ def test_rejects_time_period_until_right_time_is_enforced_dynamically():
     [
         (lambda r: r.update(resourceType="Patient"), "resourceType must be Consent"),
         (lambda r: r["provision"].update(type="deny"), "Deny provisions are not supported"),
+        (lambda r: r["provision"].pop("type"), "must explicitly be permit"),
         (
             lambda r: r["provision"].update(provision=[{"type": "permit"}]),
             "Nested provisions are not supported",
@@ -149,6 +150,10 @@ def test_rejects_time_period_until_right_time_is_enforced_dynamically():
                 system="https://medflowguardian.example/fhir/purpose"
             ),
             "must include a coding",
+        ),
+        (
+            lambda r: r.update(verification=[{"verified": False}]),
+            "lifecycle semantics",
         ),
     ],
 )
@@ -226,11 +231,20 @@ def test_import_is_idempotent_conflict_aware_and_versions_real_updates():
         conflict["provision"]["purpose"][0]["code"] = "HPAYMT"
         with pytest.raises(FHIRConsentError, match="Conflicting FHIR Consent content"):
             importer.import_consent(conflict, SOURCE_SYSTEM, patient)
+
+        scope_conflict = fhir_consent()
+        scope_conflict["provision"]["actor"] = [
+            scope_conflict["provision"]["actor"][0]
+        ]
+        with pytest.raises(FHIRConsentError, match="Conflicting FHIR Consent content"):
+            importer.import_consent(scope_conflict, SOURCE_SYSTEM, patient)
+
         assert session.query(ConsentPolicyVersion).count() == 1
         assert session.query(ConsentState).count() == 1
 
         changed = fhir_consent()
         changed["meta"]["versionId"] = "8"
+        changed["meta"]["lastUpdated"] = "2026-09-12T09:30:00Z"
         changed["status"] = "inactive"
         updated = importer.import_consent(changed, SOURCE_SYSTEM, patient)
         assert updated.created is False
@@ -238,6 +252,14 @@ def test_import_is_idempotent_conflict_aware_and_versions_real_updates():
         assert updated.state.status == ConsentStatus.REVOKED.value
         assert first.policy.status == "superseded"
         assert session.query(Consent).count() == 1
+        assert session.query(ConsentPolicyVersion).count() == 2
+        assert session.query(ConsentState).count() == 2
+
+        stale_replay = fhir_consent()
+        stale_replay["meta"]["versionId"] = "9"
+        stale_replay["meta"]["lastUpdated"] = "2026-09-12T08:45:00Z"
+        with pytest.raises(FHIRConsentError, match="Stale or replayed"):
+            importer.import_consent(stale_replay, SOURCE_SYSTEM, patient)
         assert session.query(ConsentPolicyVersion).count() == 2
         assert session.query(ConsentState).count() == 2
     finally:
