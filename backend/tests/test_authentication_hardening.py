@@ -2,11 +2,13 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from datetime import timedelta
+from jose import jwt
 import pyotp
 
 from app.main import app
 from app.models.user import User
 from app.models.auth import Session as AuthSession, UserMFA
+from app.core.config import settings
 from app.core.security import create_access_token, get_password_hash
 
 client = TestClient(app)
@@ -33,6 +35,13 @@ def test_login_issues_tokens(db_session: Session, auth_user: User):
     data = response.json()
     assert "access_token" in data
     assert data["mfa_required"] is False
+
+    claims = jwt.decode(
+        data["access_token"], settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+    )
+    assert claims["token_type"] == "access"
+    assert claims["mfa_verified"] is True
+    assert "iat" in claims
     
     # Check that refresh cookie was set
     cookies = response.cookies
@@ -124,12 +133,35 @@ def test_mfa_flow(db_session: Session, auth_user: User):
     assert mfa_data["mfa_required"] is True
     assert mfa_data["token_type"] == "pre-auth"
     pre_auth_token = mfa_data["access_token"]
+
+    preauth_claims = jwt.decode(
+        pre_auth_token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+    )
+    assert preauth_claims["token_type"] == "preauth"
+    assert preauth_claims["mfa_verified"] is False
     
+    # A password-stage token cannot act as a normal bearer credential.
+    protected_resp = client.get(
+        "/api/auth/me",
+        headers={"Authorization": f"Bearer {pre_auth_token}"},
+    )
+    assert protected_resp.status_code == 401
+
     # Check that this token is missing refresh cookie
     assert "refresh_token" not in mfa_login_resp.cookies
-    
-    # Send the code
+
     code2 = pyotp.TOTP(secret).now()
+
+    # Once MFA is enabled, /mfa/verify requires the pre-auth challenge token;
+    # a previously issued access token is not a substitute for that stage.
+    wrong_stage_resp = client.post(
+        "/api/auth/mfa/verify",
+        headers={"Authorization": f"Bearer {token}"},
+        json={"code": code2},
+    )
+    assert wrong_stage_resp.status_code == 401
+    
+    # Complete the MFA login challenge with the pre-auth token.
     verify_resp2 = client.post(
         "/api/auth/mfa/verify",
         headers={"Authorization": f"Bearer {pre_auth_token}"},

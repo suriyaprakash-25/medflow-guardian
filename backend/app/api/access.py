@@ -80,6 +80,7 @@ def create_access_request(
     )
     db.add(notif)
     db.commit()
+    db.refresh(notif)
 
     background_tasks.add_task(
         manager.send_personal_message,
@@ -88,7 +89,7 @@ def create_access_request(
     )
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "notification_created", "data": {"message": notif.message}},
+        {"type": "notification_created", "data": {"notification_id": notif.id}},
         request_data.patient_id
     )
 
@@ -221,6 +222,7 @@ def approve_request(
     )
     db.add(notif)
     db.commit()
+    db.refresh(notif)
 
     background_tasks.add_task(
         manager.send_personal_message,
@@ -229,7 +231,7 @@ def approve_request(
     )
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "notification_created", "data": {"message": notif.message}},
+        {"type": "notification_created", "data": {"notification_id": notif.id}},
         req.requesting_doctor_id
     )
 
@@ -280,6 +282,7 @@ def reject_request(
     )
     db.add(notif)
     db.commit()
+    db.refresh(notif)
 
     background_tasks.add_task(
         manager.send_personal_message,
@@ -288,7 +291,7 @@ def reject_request(
     )
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "notification_created", "data": {"message": notif.message}},
+        {"type": "notification_created", "data": {"notification_id": notif.id}},
         req.requesting_doctor_id
     )
 
@@ -359,6 +362,7 @@ def revoke_grant(
     )
     db.add(notif)
     db.commit()
+    db.refresh(notif)
 
     background_tasks.add_task(
         manager.send_personal_message,
@@ -367,7 +371,7 @@ def revoke_grant(
     )
     background_tasks.add_task(
         manager.send_personal_message,
-        {"type": "notification_created", "data": {"message": notif.message}},
+        {"type": "notification_created", "data": {"notification_id": notif.id}},
         grant.doctor_id
     )
 

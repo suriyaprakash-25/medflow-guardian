@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.hospital import Hospital, HospitalStaff, Visit
 from app.models.triage import TriageRequest
 from app.core.security import create_access_token
+from app.api.websockets import WS_AUTH_PROTOCOL
 
 @pytest.fixture(scope="module")
 def db():
@@ -109,8 +110,28 @@ def test_triage_isolation(db_session):
     )
     assert res_fail.status_code == 403
 
-def test_websocket_isolation(db_session):
+def test_websocket_isolation(db_session, monkeypatch):
     data = setup_test_data(db_session)
+
+    # The R8 outbound evaluator opens an independent SessionLocal so production
+    # broadcasts re-check live membership. Tests run inside an outer rollback
+    # transaction, so route-created rows are intentionally invisible to another
+    # PostgreSQL connection. Reuse the fixture transaction for this integration
+    # test without allowing the evaluator to close the fixture-owned session.
+    class SessionProxy:
+        def __init__(self, session):
+            self._session = session
+
+        def __getattr__(self, name):
+            return getattr(self._session, name)
+
+        def close(self):
+            return None
+
+    monkeypatch.setattr(
+        "app.core.database.SessionLocal",
+        lambda: SessionProxy(db_session),
+    )
 
     # Setup clients
     doc_a_token = create_access_token("test_doc_a@demo.com")
@@ -119,8 +140,12 @@ def test_websocket_isolation(db_session):
 
     client = TestClient(app)
     
-    with client.websocket_connect(f"/ws?token={doc_a_token}") as ws_a:
-        with client.websocket_connect(f"/ws?token={doc_b_token}") as ws_b:
+    with client.websocket_connect(
+        "/ws", subprotocols=[WS_AUTH_PROTOCOL, doc_a_token]
+    ) as ws_a:
+        with client.websocket_connect(
+            "/ws", subprotocols=[WS_AUTH_PROTOCOL, doc_b_token]
+        ) as ws_b:
             # Patient submits to Hospital A
             res_a = client.post("/api/triage/", 
                 json={"symptoms": "Emergency A", "hospital_id": data["h1"].id}, 
@@ -133,7 +158,8 @@ def test_websocket_isolation(db_session):
             assert msg_a["type"] == "triage_update"
             assert msg_a["data"]["hospital_id"] == data["h1"].id
 
-            # Doc B should NOT receive it
+            # Doc B should NOT receive the Hospital A event; the next event it
+            # receives must be the event for its own Hospital B membership.
             res_b = client.post("/api/triage/", 
                 json={"symptoms": "Emergency B", "hospital_id": data["h2"].id}, 
                 headers={"Authorization": f"Bearer {patient_token}"}

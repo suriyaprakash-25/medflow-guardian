@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import originalAxios from 'axios';
 import { api as axios } from '../lib/api';
+import { createAuthenticatedWebSocket } from '../lib/websocket';
 import { useNavigate, Outlet, Link, useLocation, useOutletContext } from 'react-router-dom';
 import { Activity, Users, User, FileText, Lock, Bell, LogOut, Menu, Shield, Calendar } from 'lucide-react';
 import { toast } from 'react-hot-toast';
@@ -233,12 +234,34 @@ export default function Layout() {
     fetchAccessData();
     fetchPhase4Data();
 
+    let disposed = false;
+
+    const reconnectAfterAuthFailure = async () => {
+      try {
+        const response = await axios.post('/api/auth/refresh');
+        const refreshedToken = response.data?.access_token;
+        if (typeof refreshedToken !== 'string' || !refreshedToken) {
+          throw new Error('Refresh response did not include an access token');
+        }
+        localStorage.setItem('token', refreshedToken);
+        if (!disposed) connectWebSocket();
+      } catch (error) {
+        console.error('Unable to refresh realtime authentication', error);
+        if (!disposed) handleLogout();
+      }
+    };
+
     const connectWebSocket = () => {
-      if (ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
+      if (disposed || ws.current?.readyState === WebSocket.OPEN || ws.current?.readyState === WebSocket.CONNECTING) return;
+
+      const currentToken = localStorage.getItem('token');
+      if (!currentToken) {
+        handleLogout();
+        return;
+      }
       
       setWsStatus('connecting');
-      const wsUrl = `ws://localhost:8080/ws?token=${token}`;
-      ws.current = new WebSocket(wsUrl);
+      ws.current = createAuthenticatedWebSocket(currentToken);
 
       ws.current.onopen = () => {
         setWsStatus('connected');
@@ -271,9 +294,14 @@ export default function Layout() {
         }
       };
 
-      ws.current.onclose = () => {
+      ws.current.onclose = (event) => {
         setWsStatus('disconnected');
         ws.current = null;
+        if (disposed) return;
+        if (event.code === 1008) {
+          void reconnectAfterAuthFailure();
+          return;
+        }
         if (!reconnectTimeout.current) {
           reconnectTimeout.current = setTimeout(() => connectWebSocket(), 3000);
         }
@@ -287,6 +315,7 @@ export default function Layout() {
     connectWebSocket();
 
     return () => {
+      disposed = true;
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
       if (ws.current) {
         ws.current.onclose = null;
@@ -344,9 +373,15 @@ export default function Layout() {
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await axios.post('/api/auth/logout');
+    } catch (error) {
+      console.error('Failed to revoke server session during logout', error);
+    } finally {
+      localStorage.removeItem('token');
+      navigate('/login');
+    }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
@@ -437,7 +472,6 @@ export default function Layout() {
       }
     }
   };
-
   const handleMarkRead = async (id: number) => {
     try {
       await axios.post(`/api/notifications/${id}/read`, {}, { headers });
