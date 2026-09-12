@@ -10,9 +10,12 @@ type TokenBridgeState = {
   originalRemoveItem: Storage['removeItem'];
 };
 
+type TokenBridgeGlobal = typeof globalThis & Record<string, unknown>;
+
 function tokenBridge(): TokenBridgeState {
-  const root = globalThis as any;
-  if (root[TOKEN_BRIDGE_KEY]) return root[TOKEN_BRIDGE_KEY] as TokenBridgeState;
+  const root = globalThis as TokenBridgeGlobal;
+  const existing = root[TOKEN_BRIDGE_KEY] as TokenBridgeState | undefined;
+  if (existing) return existing;
 
   const state: TokenBridgeState = {
     accessToken: null,
