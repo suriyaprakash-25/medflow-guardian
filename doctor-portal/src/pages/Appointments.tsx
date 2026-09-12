@@ -31,7 +31,7 @@ export default function Appointments() {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id]);
+  }, [currentUser]);
 
   useEffect(() => {
     queueMicrotask(() => {
