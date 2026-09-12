@@ -7,13 +7,15 @@ services:
     runtime: python
     buildCommand: "cd backend && pip install -r requirements.txt"
     preDeployCommand: "cd backend && alembic upgrade head"
-    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --no-server-header"
     healthCheckPath: /ready
     autoDeployTrigger: checksPass
     maxShutdownDelaySeconds: 30
     envVars:
       - key: ENV
         value: production
+      - key: MEDFLOW_SERVICE_ROLE
+        value: web
       - key: PYTHON_VERSION
         value: "3.11.16"
       - key: DATABASE_URL
@@ -28,16 +30,14 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         sync: false
-      # Render static sites and the API have separate browser origins. Use a
-      # Secure SameSite=None refresh cookie and validate Origin on the backend.
+      - key: CLAMAV_HOST
+        sync: false
+      - key: CLAMAV_PORT
+        value: "3310"
       - key: REFRESH_COOKIE_SAMESITE
         value: none
-      # Configure this to only the actual reverse-proxy networks in front of the
-      # service. Leaving it empty is fail-safe: X-Forwarded-For is ignored.
       - key: TRUSTED_PROXY_CIDRS
         sync: false
-      # Explicit browser origins are derived from the static services so
-      # credentialed CORS never falls back to localhost or wildcard origins.
       - key: PATIENT_APP_ORIGIN
         fromService:
           type: web
@@ -53,10 +53,46 @@ services:
           type: web
           name: medflow-admin-portal-prod
           envVarKey: RENDER_EXTERNAL_URL
-      # Add comma-separated custom frontend domains here when production uses
-      # domains other than the Render-generated service URLs.
       - key: FRONTEND_CORS_ORIGINS
         sync: false
+
+  # Durable recovery for pending document scans. The HTTP BackgroundTask remains
+  # the low-latency path; this worker guarantees persisted pending scans are
+  # revisited after web-process restarts.
+  - type: worker
+    name: medflow-malware-worker-prod
+    runtime: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && python -m app.workers.malware_worker"
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 60
+    envVars:
+      - key: ENV
+        value: production
+      - key: MEDFLOW_SERVICE_ROLE
+        value: malware_worker
+      - key: PYTHON_VERSION
+        value: "3.11.16"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: medical-documents
+      - key: CLAMAV_HOST
+        sync: false
+      - key: CLAMAV_PORT
+        value: "3310"
+      - key: CLAMAV_TIMEOUT_SECONDS
+        value: "15"
+      - key: CLAMAV_MAX_BYTES
+        value: "10485760"
+      - key: MALWARE_WORKER_BATCH_SIZE
+        value: "25"
+      - key: MALWARE_WORKER_POLL_SECONDS
+        value: "5"
 
   - type: web
     name: medflow-patient-app-prod
@@ -70,6 +106,28 @@ services:
           type: web
           name: medflow-backend-prod
           envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; form-action 'self'"
+      - path: /assets/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
     routes:
       - type: rewrite
         source: /*
@@ -87,6 +145,28 @@ services:
           type: web
           name: medflow-backend-prod
           envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; form-action 'self'"
+      - path: /assets/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
     routes:
       - type: rewrite
         source: /*
@@ -104,6 +184,28 @@ services:
           type: web
           name: medflow-backend-prod
           envVarKey: RENDER_EXTERNAL_URL
+    headers:
+      - path: /*
+        name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=(), microphone=(), geolocation=()"
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; base-uri 'self'; frame-ancestors 'none'; object-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https: wss:; form-action 'self'"
+      - path: /assets/*
+        name: Cache-Control
+        value: "public, max-age=31536000, immutable"
     routes:
       - type: rewrite
         source: /*
