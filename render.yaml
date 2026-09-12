@@ -28,6 +28,10 @@ services:
         generateValue: true
       - key: ENCRYPTION_KEY
         sync: false
+      # Render static sites and the API have separate browser origins. Use a
+      # Secure SameSite=None refresh cookie and validate Origin on the backend.
+      - key: REFRESH_COOKIE_SAMESITE
+        value: none
       # Configure this to only the actual reverse-proxy networks in front of the
       # service. Leaving it empty is fail-safe: X-Forwarded-For is ignored.
       - key: TRUSTED_PROXY_CIDRS
