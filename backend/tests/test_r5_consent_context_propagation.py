@@ -228,7 +228,7 @@ def _seed_r5(db: Session):
     }
 
 
-@patch("app.services.storage.StorageService.download_document")
+@patch("app.api.document.storage_service.download_document")
 def test_document_download_uses_server_resolved_grant_consent(mock_storage, db_session: Session):
     data = _seed_r5(db_session)
     mock_storage.return_value = b"r5 file"
@@ -243,7 +243,7 @@ def test_document_download_uses_server_resolved_grant_consent(mock_storage, db_s
     mock_storage.assert_called_once()
 
 
-@patch("app.services.storage.StorageService.download_document")
+@patch("app.api.document.storage_service.download_document")
 def test_document_download_missing_purpose_fails_before_storage(mock_storage, db_session: Session):
     data = _seed_r5(db_session)
 

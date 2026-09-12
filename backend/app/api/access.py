@@ -41,7 +41,7 @@ def create_access_request(
         requires_consent=False,
     ))
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.detail)
+        raise HTTPException(status_code=403, detail=f"Not authorized: {decision.detail}")
 
     # Verify documents belong to patient
     requested_docs = db.query(MedicalDocument).filter(
