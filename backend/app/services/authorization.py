@@ -318,12 +318,19 @@ class AuthorizationService:
         )
 
         try:
-            # SAVEPOINT isolates an audit failure from the surrounding request
-            # transaction. The outer transaction still controls final commit, but
-            # a failed audit flush no longer leaves the Session unusable.
-            with self._db.begin_nested():
+            # The test harness (and some callers) already operate inside a
+            # SAVEPOINT. Nesting another context-managed SAVEPOINT conflicts with
+            # their transaction-end listeners, so reuse the existing savepoint.
+            # Normal production request Sessions are not nested; create a local
+            # savepoint there so an audit flush failure does not poison the outer
+            # request transaction.
+            if self._db.in_nested_transaction():
                 self._db.add(log)
                 self._db.flush()
+            else:
+                with self._db.begin_nested():
+                    self._db.add(log)
+                    self._db.flush()
         except Exception as exc:
             logger.exception(
                 "Authorization audit persistence failed for actor=%s operation=%s resource_type=%s",
