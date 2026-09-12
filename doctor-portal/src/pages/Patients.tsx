@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
@@ -20,7 +20,7 @@ export default function Patients() {
   const filteredVisits = doctorVisits.filter(v => 
     v.patient_id.toString().includes(searchTerm) || 
     (v.hospital?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    v.reason.toLowerCase().includes(searchTerm.toLowerCase())
+    (v.reason || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (
@@ -94,8 +94,8 @@ export default function Patients() {
                         <div className="text-xs text-slate-500">Visit #{v.id}</div>
                       </td>
                       <td className="px-6 py-4 align-middle">
-                        <div className="text-sm text-slate-600 truncate max-w-[200px]" title={v.reason}>
-                          {v.reason}
+                        <div className="text-sm text-slate-600 truncate max-w-[200px]" title={v.reason || ''}>
+                          {v.reason || 'Not specified'}
                         </div>
                       </td>
                       <td className="px-6 py-4 align-middle">
