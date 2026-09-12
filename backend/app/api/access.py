@@ -14,12 +14,14 @@ from app.models.audit import AuditLog
 from app.models.notification import Notification
 from app.api.websockets import manager
 from app.schemas.access import (
-    AccessRequestCreate, AccessRequestResponse, 
+    AccessRequestCreate, AccessRequestResponse,
     AccessRequestApprove, AccessRequestReject, AccessGrantResponse
 )
 from app.api.dependencies import get_current_user, get_patient_identity, get_practitioner_identity
+from app.services.authorization import Operation
 
 router = APIRouter()
+
 
 @router.post("/access-requests", response_model=AccessRequestResponse)
 def create_access_request(
@@ -54,7 +56,7 @@ def create_access_request(
         status="pending"
     )
     access_req.requested_documents.extend(requested_docs)
-    
+
     db.add(access_req)
     db.commit()
     db.refresh(access_req)
@@ -94,6 +96,7 @@ def create_access_request(
 
     return access_req
 
+
 @router.get("/access-requests/doctor", response_model=List[AccessRequestResponse])
 def get_doctor_requests(
     db: Session = Depends(get_db),
@@ -103,6 +106,7 @@ def get_doctor_requests(
         DocumentAccessRequest.requesting_doctor_id == current_doctor.id
     ).all()
     return requests
+
 
 @router.get("/access-requests/patient", response_model=List[AccessRequestResponse])
 def get_patient_requests(
@@ -116,6 +120,7 @@ def get_patient_requests(
     if status:
         query = query.filter(DocumentAccessRequest.status == status)
     return query.all()
+
 
 @router.post("/access-requests/{request_id}/approve", response_model=AccessGrantResponse)
 def approve_request(
@@ -133,7 +138,7 @@ def approve_request(
     req = db.query(DocumentAccessRequest).with_for_update().filter(
         DocumentAccessRequest.id == request_id
     ).first()
-    
+
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     if req.patient_id != current_patient.id:
@@ -163,10 +168,16 @@ def approve_request(
     db.add(consent)
     db.flush()
 
+    # Store the canonical lower-case Operation values consumed by ConsentService.
+    # Older code wrote READ/DOWNLOAD, which made approved grants unusable because
+    # AuthorizationContext.operation.value is lower-case.
     policy = ConsentPolicyVersion(
         consent_id=consent.id,
         version_number=1,
-        policy_payload={"allowed_purposes": ["TREATMENT"], "allowed_operations": ["READ", "DOWNLOAD"]},
+        policy_payload={
+            "allowed_purposes": ["TREATMENT"],
+            "allowed_operations": [Operation.READ.value, Operation.DOWNLOAD.value],
+        },
         status="active"
     )
     db.add(policy)
@@ -182,7 +193,7 @@ def approve_request(
 
     # Create Grant
     expires_at = datetime.utcnow() + timedelta(hours=approval_data.duration_hours)
-    
+
     grant = DocumentAccessGrant(
         access_request_id=req.id,
         patient_id=current_patient.id,
@@ -235,6 +246,7 @@ def approve_request(
 
     return grant
 
+
 @router.post("/access-requests/{request_id}/reject")
 def reject_request(
     request_id: int,
@@ -247,7 +259,7 @@ def reject_request(
     req = db.query(DocumentAccessRequest).with_for_update().filter(
         DocumentAccessRequest.id == request_id
     ).first()
-    
+
     if not req:
         raise HTTPException(status_code=404, detail="Request not found")
     if req.patient_id != current_patient.id:
@@ -258,7 +270,7 @@ def reject_request(
     req.status = "rejected"
     req.responded_at = datetime.utcnow()
     req.rejection_reason = reject_data.rejection_reason
-    
+
     # Phase 4 Audit and Notification
     audit = AuditLog(
         actor_id=current_patient.id,
@@ -294,6 +306,7 @@ def reject_request(
 
     return {"message": "Request rejected"}
 
+
 @router.post("/access-grants/{grant_id}/revoke")
 def revoke_grant(
     grant_id: int,
@@ -314,7 +327,7 @@ def revoke_grant(
 
     grant.status = "revoked"
     grant.revoked_at = datetime.utcnow()
-    
+
     # Phase 5: Update Authoritative Consent State
     if grant.consent_id:
         # Phase 8: Lock the consent row to serialize state transitions
@@ -333,7 +346,7 @@ def revoke_grant(
                     status="revoked"
                 )
                 db.add(state)
-    
+
     # Also update the request status for clarity
     if grant.request:
         grant.request.status = "revoked"
@@ -373,6 +386,7 @@ def revoke_grant(
 
     return {"message": "Access revoked successfully"}
 
+
 @router.get("/access-grants/patient", response_model=List[AccessGrantResponse])
 def get_patient_grants(
     db: Session = Depends(get_db),
@@ -381,6 +395,7 @@ def get_patient_grants(
     return db.query(DocumentAccessGrant).filter(
         DocumentAccessGrant.patient_id == current_patient.id
     ).all()
+
 
 @router.get("/access-grants/doctor", response_model=List[AccessGrantResponse])
 def get_doctor_grants(
@@ -397,5 +412,5 @@ def get_doctor_grants(
     for g in grants:
         if g.status == "active" and g.expires_at < datetime.now(timezone.utc):
             g.status = "expired"
-    
+
     return grants
