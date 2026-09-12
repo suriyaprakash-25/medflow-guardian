@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any, Dict
 
@@ -8,6 +8,12 @@ from app.models.clinical import Prescription, LabResult, ClinicalNote
 from app.models.document import MedicalDocument
 from app.api.dependencies import get_current_user
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
+from app.schemas.consent import FHIRConsentImportResponse
+from app.services.interoperability.fhir_consent import (
+    FHIRConsentError,
+    FHIRConsentImporter,
+    map_fhir_consent,
+)
 
 from app.services.interoperability.fhir_serializers import (
     to_fhir_patient,
@@ -19,6 +25,56 @@ from app.services.interoperability.fhir_serializers import (
 )
 
 router = APIRouter()
+
+
+@router.post("/interoperability/fhir/consents/import", response_model=FHIRConsentImportResponse)
+def import_fhir_consent(
+    resource: Dict[str, Any] = Body(...),
+    source_system: str = Query(..., min_length=8, max_length=255),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> FHIRConsentImportResponse:
+    """Import a supported FHIR R4 Consent into the central consent model."""
+    try:
+        mapped = map_fhir_consent(resource, source_system)
+    except FHIRConsentError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    decision = AuthorizationService(db).authorize(AuthorizationContext(
+        actor=current_user,
+        operation=Operation.CREATE,
+        resource_type=ResourceType.CONSENT,
+        db=db,
+        patient_id=mapped.patient_id,
+    ))
+    if not decision.allowed:
+        db.rollback()
+        raise HTTPException(status_code=403, detail=decision.detail)
+
+    try:
+        result = FHIRConsentImporter(db).import_consent(resource, source_system, current_user)
+        db.commit()
+        db.refresh(result.consent)
+        db.refresh(result.policy)
+        db.refresh(result.state)
+    except FHIRConsentError as exc:
+        db.rollback()
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    return FHIRConsentImportResponse(
+        consent_id=result.consent.id,
+        policy_version_id=result.policy.id,
+        policy_version_number=result.policy.version_number,
+        state_id=result.state.id,
+        state_status=result.state.status,
+        created=result.created,
+        source_system=result.consent.source_system,
+        source_resource_id=result.consent.source_resource_id,
+        policy_payload=result.policy.policy_payload,
+    )
 
 @router.get("/interoperability/patients/{patient_id}/export")
 def export_patient_fhir_bundle(

@@ -94,6 +94,7 @@ class ResourceType(str, enum.Enum):
     PATIENT_RECORD = "patient_record"
     APPOINTMENT = "appointment"
     FHIR_EXPORT = "fhir_export"
+    CONSENT = "consent"
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +326,8 @@ class AuthorizationService:
             return self._authorize_appointment(ctx)
         elif ctx.resource_type == ResourceType.FHIR_EXPORT:
             return self._authorize_fhir_export(ctx)
+        elif ctx.resource_type == ResourceType.CONSENT:
+            return self._authorize_consent(ctx)
         else:
             return AuthorizationDecision.default_deny()
 
@@ -547,6 +550,22 @@ class AuthorizationService:
                 return AuthorizationDecision.allow()
             return AuthorizationDecision.deny(DenialReason.RELATIONSHIP_REQUIRED, "No visit relationship or active grant")
         return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
+
+    def _authorize_consent(self, ctx: AuthorizationContext) -> AuthorizationDecision:
+        """Consent writes are patient-owned and never authorized by role alone."""
+        if ctx.operation not in (Operation.CREATE, Operation.UPDATE):
+            return AuthorizationDecision.default_deny()
+        if ctx.actor.role != "patient":
+            return AuthorizationDecision.deny(
+                DenialReason.ROLE_NOT_PERMITTED,
+                "Only patients may import or update their consent",
+            )
+        if ctx.patient_id != ctx.actor.id:
+            return AuthorizationDecision.deny(
+                DenialReason.RESOURCE_NOT_OWNED,
+                "A patient may only import consent for their own record",
+            )
+        return AuthorizationDecision.allow()
 
     # ------------------------------------------------------------------
     # Rule: ACCESS_REQUEST

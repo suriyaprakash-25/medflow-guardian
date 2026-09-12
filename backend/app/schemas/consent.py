@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
 
 class ConsentCreate(BaseModel):
@@ -17,6 +17,7 @@ class ConsentStateResponse(BaseModel):
     consent_id: int
     policy_version_id: int
     status: str
+    reason: Optional[str] = None
     created_at: datetime
     
     class Config:
@@ -33,3 +34,15 @@ class ConsentResponse(BaseModel):
     
     class Config:
         from_attributes = True
+
+
+class FHIRConsentImportResponse(BaseModel):
+    consent_id: int
+    policy_version_id: int
+    policy_version_number: int
+    state_id: int
+    state_status: str
+    created: bool
+    source_system: str
+    source_resource_id: str
+    policy_payload: Dict[str, Any]

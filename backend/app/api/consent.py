@@ -97,7 +97,8 @@ def transition_consent(
     new_state = ConsentState(
         consent_id=consent.id,
         policy_version_id=policy.id,
-        status=target_status
+        status=target_status,
+        reason=transition.reason,
     )
     db.add(new_state)
     db.commit()

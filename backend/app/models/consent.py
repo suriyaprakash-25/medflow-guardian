@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -18,6 +18,13 @@ class Consent(Base):
     High-level governance entity representing a patient's consent decision.
     """
     __tablename__ = "consents"
+    __table_args__ = (
+        UniqueConstraint(
+            "source_system",
+            "source_resource_id",
+            name="uq_consents_source_system_resource_id",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
@@ -27,6 +34,11 @@ class Consent(Base):
     hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=True, index=True)
     
     status = Column(String, default=ConsentStatus.DRAFT.value, nullable=False)
+
+    # Stable provenance for imported FHIR resources. Both values are null for
+    # consents authored natively in MedFlow.
+    source_system = Column(String(255), nullable=True)
+    source_resource_id = Column(String(255), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
@@ -43,6 +55,13 @@ class ConsentPolicyVersion(Base):
     Immutable policy ruleset attached to a Consent.
     """
     __tablename__ = "consent_policy_versions"
+    __table_args__ = (
+        UniqueConstraint(
+            "consent_id",
+            "version_number",
+            name="uq_consent_policy_versions_consent_version",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     consent_id = Column(Integer, ForeignKey("consents.id"), nullable=False, index=True)
@@ -50,7 +69,7 @@ class ConsentPolicyVersion(Base):
     version_number = Column(Integer, nullable=False)
     
     # Immutable policy payload
-    # Expected schema: { "allowed_purposes": ["TREATMENT"], "allowed_operations": ["READ", "DOWNLOAD"] }
+    # Expected schema: { "allowed_purposes": ["TREATMENT"], "allowed_operations": ["read", "download"] }
     policy_payload = Column(JSON, nullable=False)
     
     status = Column(String, default="active", nullable=False) # active, superseded
@@ -72,6 +91,7 @@ class ConsentState(Base):
     policy_version_id = Column(Integer, ForeignKey("consent_policy_versions.id"), nullable=False, index=True)
     
     status = Column(String, nullable=False) # matches ConsentStatus
+    reason = Column(String(500), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
