@@ -212,3 +212,28 @@ def test_inactive_platform_admin_is_rejected(db_session: Session):
 
     response = client.get("/api/admin/dashboard", headers=_headers(inactive))
     assert response.status_code == 401
+
+
+def test_legacy_admin_system_role_has_no_global_admin_authority(db_session: Session):
+    hospital = Hospital(name="Legacy Admin Isolation Hospital")
+    legacy_admin = User(
+        email="legacy-global-admin@test.com",
+        hashed_password="hashed",
+        role="admin",
+        full_name="Legacy Admin",
+        is_active=True,
+    )
+    db_session.add_all([hospital, legacy_admin])
+    db_session.commit()
+
+    dashboard = client.get(
+        f"/api/admin/dashboard?hospital_id={hospital.id}",
+        headers=_headers(legacy_admin),
+    )
+    audit = client.get(
+        f"/api/admin/audit?hospital_id={hospital.id}",
+        headers=_headers(legacy_admin),
+    )
+
+    assert dashboard.status_code == 403
+    assert audit.status_code == 403
