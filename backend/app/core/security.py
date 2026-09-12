@@ -16,12 +16,15 @@ def create_access_token(
     *,
     token_type: str = "access",
     mfa_verified: bool = True,
+    session_id: int | None = None,
 ) -> str:
-    """Create a JWT with an explicit authentication-stage claim.
+    """Create a JWT with explicit authentication-stage and session claims.
 
     `access` tokens are usable by protected application endpoints. `preauth`
     tokens are deliberately restricted to the MFA verification endpoint and
-    must never be accepted as normal bearer credentials.
+    must never be accepted as normal bearer credentials. Production-issued
+    access tokens can also carry `sid`, binding them to a revocable server-side
+    authentication session.
     """
     now = datetime.now(timezone.utc)
     if expires_delta:
@@ -37,6 +40,8 @@ def create_access_token(
         "token_type": token_type,
         "mfa_verified": mfa_verified,
     }
+    if session_id is not None:
+        to_encode["sid"] = session_id
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 
