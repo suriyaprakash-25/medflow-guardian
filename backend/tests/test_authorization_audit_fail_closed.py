@@ -28,14 +28,14 @@ def _actor(db: Session, email: str = "audit-fail-closed@test.com") -> User:
     return actor
 
 
-def _fail_second_flush(monkeypatch, db: Session):
-    """Let begin_nested() establish its savepoint, then fail the audit flush."""
+def _fail_next_flush(monkeypatch, db: Session):
+    """Fail exactly one audit flush, then restore normal Session behavior."""
     original_flush = db.flush
-    calls = {"count": 0}
+    failed = {"done": False}
 
     def fail_audit_flush(*args, **kwargs):
-        calls["count"] += 1
-        if calls["count"] == 2:
+        if not failed["done"]:
+            failed["done"] = True
             raise RuntimeError("simulated audit persistence outage")
         return original_flush(*args, **kwargs)
 
@@ -48,7 +48,7 @@ def test_allowed_operation_fails_closed_when_authorization_audit_cannot_flush(
     monkeypatch,
 ):
     actor = _actor(db_session)
-    original_flush = _fail_second_flush(monkeypatch, db_session)
+    original_flush = _fail_next_flush(monkeypatch, db_session)
 
     decision = AuthorizationService(db_session).authorize(
         AuthorizationContext(
@@ -63,7 +63,7 @@ def test_allowed_operation_fails_closed_when_authorization_audit_cannot_flush(
     assert decision.reason == DenialReason.AUDIT_PERSISTENCE_FAILED
     assert decision.detail == "Authorization audit unavailable; operation denied"
 
-    # A failed audit savepoint must not poison the request transaction.
+    # An injected audit failure must not leave the request Session unusable.
     assert db_session.is_active is True
     original_flush()
 
@@ -73,7 +73,7 @@ def test_existing_denial_remains_denied_when_its_audit_write_fails(
     monkeypatch,
 ):
     actor = _actor(db_session, "audit-deny@test.com")
-    _fail_second_flush(monkeypatch, db_session)
+    _fail_next_flush(monkeypatch, db_session)
 
     decision = AuthorizationService(db_session).authorize(
         AuthorizationContext(
