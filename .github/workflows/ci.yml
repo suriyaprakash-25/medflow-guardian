@@ -87,6 +87,44 @@ jobs:
         cd backend
         alembic upgrade head
 
+    - name: Run assertion-based Postman contract for every HTTP endpoint
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        python -m scripts.generate_postman_collection
+        git diff --exit-code -- ../docs/postman/MedFlow-All-Endpoints.postman_collection.json
+        uvicorn app.main:app --host 127.0.0.1 --port 8080 \
+          > "$RUNNER_TEMP/medflow-postman-api.log" 2>&1 &
+        api_pid=$!
+        trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+        python - <<'PY'
+        import time
+        import httpx
+
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            try:
+                response = httpx.get("http://127.0.0.1:8080/ready", timeout=2)
+                if response.status_code == 200:
+                    raise SystemExit(0)
+            except httpx.HTTPError:
+                pass
+            time.sleep(1)
+        raise SystemExit("MedFlow API did not become ready for Newman")
+        PY
+        cd ..
+        npx --yes newman@6.2.2 run \
+          docs/postman/MedFlow-All-Endpoints.postman_collection.json \
+          --env-var base_url=http://127.0.0.1:8080 \
+          --reporters cli
+
     - name: Run P0 database integrity verification
       env:
         TESTING: "True"

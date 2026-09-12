@@ -5,6 +5,19 @@
         "description": "Postman collection for Phase B1 Admin Platform Verification",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
+    "event": [
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "const expected = pm.info.requestName.includes('(FAIL)') ? 403 : 200;",
+                    "pm.test('request returned the expected authorization status', function () { pm.response.to.have.status(expected); });",
+                    "pm.test('security headers are present', function () { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });"
+                ]
+            }
+        }
+    ],
     "item": [
         {
             "name": "Organizations",

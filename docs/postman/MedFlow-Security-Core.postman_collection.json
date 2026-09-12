@@ -4,6 +4,20 @@
     "description": "Postman Collection for verifying MedFlow Guardian Security Controls (Phase A.1).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('request returned the expected success status', function () { pm.response.to.have.status(200); });",
+          "pm.test('security headers are present', function () { pm.expect(pm.response.headers.get('X-Content-Type-Options')).to.eql('nosniff'); pm.expect(pm.response.headers.get('Cache-Control')).to.eql('no-store'); });",
+          "if (pm.info.requestName === 'Auth - Login' && pm.response.code === 200) { const body = pm.response.json(); pm.collectionVariables.set('patient_token', body.access_token); }",
+          "if (pm.info.requestName === 'Consent - Create' && pm.response.code === 200) { pm.collectionVariables.set('consent_id', pm.response.json().id); }"
+        ]
+      }
+    }
+  ],
   "item": [
     {
       "name": "Auth - Login",
@@ -18,9 +32,9 @@
           ]
         },
         "url": {
-          "raw": "{{base_url}}/api/auth/token",
+          "raw": "{{base_url}}/api/auth/login",
           "host": ["{{base_url}}"],
-          "path": ["api", "auth", "token"]
+          "path": ["api", "auth", "login"]
         }
       }
     },
