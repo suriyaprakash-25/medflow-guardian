@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 import Layout from './components/Layout';
@@ -7,10 +8,23 @@ import Staff from './pages/Staff';
 import Audit from './pages/Audit';
 import Settings from './pages/Settings';
 import Organizations from './pages/Organizations';
+import { ensureSession } from './lib/api';
 
 function ProtectedRoute() {
-  const token = localStorage.getItem('token');
-  if (!token) return <Navigate to="/login" replace />;
+  const [authorized, setAuthorized] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    ensureSession().then((ok) => {
+      if (active) setAuthorized(ok);
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  if (authorized === null) return null;
+  if (!authorized) return <Navigate to="/login" replace />;
   return <Outlet />;
 }
 
@@ -20,7 +34,6 @@ export default function App() {
       <Toaster position="top-right" />
       <Routes>
         <Route path="/login" element={<Login />} />
-        
         <Route element={<ProtectedRoute />}>
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
