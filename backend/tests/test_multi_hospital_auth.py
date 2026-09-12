@@ -7,6 +7,7 @@ from app.models.user import User
 from app.models.hospital import Hospital, HospitalStaff, Visit
 from app.models.triage import TriageRequest
 from app.core.security import create_access_token
+from app.api.websockets import WS_AUTH_PROTOCOL
 
 @pytest.fixture(scope="module")
 def db():
@@ -119,8 +120,12 @@ def test_websocket_isolation(db_session):
 
     client = TestClient(app)
     
-    with client.websocket_connect(f"/ws?token={doc_a_token}") as ws_a:
-        with client.websocket_connect(f"/ws?token={doc_b_token}") as ws_b:
+    with client.websocket_connect(
+        "/ws", subprotocols=[WS_AUTH_PROTOCOL, doc_a_token]
+    ) as ws_a:
+        with client.websocket_connect(
+            "/ws", subprotocols=[WS_AUTH_PROTOCOL, doc_b_token]
+        ) as ws_b:
             # Patient submits to Hospital A
             res_a = client.post("/api/triage/", 
                 json={"symptoms": "Emergency A", "hospital_id": data["h1"].id}, 
