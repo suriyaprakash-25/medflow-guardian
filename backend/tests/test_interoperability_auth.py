@@ -3,6 +3,8 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.models.user import User
 from app.models.consent import Consent, ConsentPolicyVersion, ConsentState, ConsentStatus
+from app.models.hospital import Visit
+from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
 
 @pytest.fixture
 def client():
@@ -52,6 +54,30 @@ def test_provider_fhir_export_requires_consent_context(client, db_session):
         assert response.status_code == 403
     finally:
         clear_overrides()
+
+def test_provider_fhir_export_denies_visit_only_access_at_cae(db_session):
+    doctor = User(id=111, email="d111@example.com", hashed_password="hash", role="doctor", full_name="Doctor")
+    patient = User(id=112, email="p112@example.com", hashed_password="hash", role="patient", full_name="Patient")
+    db_session.add_all([doctor, patient])
+    db_session.commit()
+
+    visit = Visit(patient_id=patient.id, doctor_id=doctor.id, hospital_id=1)
+    db_session.add(visit)
+    db_session.commit()
+
+    decision = AuthorizationService(db_session).authorize(
+        AuthorizationContext(
+            actor=doctor,
+            operation=Operation.READ,
+            resource_type=ResourceType.FHIR_EXPORT,
+            db=db_session,
+            patient_id=patient.id,
+            purpose="TREATMENT",
+        )
+    )
+
+    assert decision.allowed is False
+    assert decision.reason.value == "consent_required"
 
 def test_provider_fhir_export_accepts_matching_active_consent(client, db_session):
     doctor = User(id=103, email="d103@example.com", hashed_password="hash", role="doctor", full_name="Doctor")
