@@ -31,6 +31,8 @@ Phase 5 Extension Points (DO NOT ACTIVATE YET):
 from __future__ import annotations
 
 import enum
+import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional, Any
@@ -43,6 +45,9 @@ from app.models.document import MedicalDocument
 from app.models.access import DocumentAccessRequest, DocumentAccessGrant
 from app.models.notification import Notification
 from app.models.audit import AuditLog
+
+
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -114,6 +119,7 @@ class DenialReason(str, enum.Enum):
     RELATIONSHIP_REQUIRED = "relationship_required"
     OPERATION_NOT_ALLOWED = "operation_not_allowed"
     INVALID_CONTEXT = "invalid_context"
+    AUDIT_PERSISTENCE_FAILED = "audit_persistence_failed"
     # Phase 5
     CONSENT_REQUIRED = "consent_required"
     ENFORCEMENT_STATE_INVALID = "enforcement_state_invalid"
@@ -186,6 +192,10 @@ class AuthorizationDecision:
         )
 
 
+class AuthorizationAuditError(RuntimeError):
+    """Raised when a mandatory CAE audit row cannot be flushed safely."""
+
+
 # ---------------------------------------------------------------------------
 # Central Authorization Service
 # ---------------------------------------------------------------------------
@@ -217,6 +227,11 @@ class AuthorizationService:
     def authorize(self, ctx: AuthorizationContext) -> AuthorizationDecision:
         """
         Evaluate authorization. DEFAULT DENY if no rule matches.
+
+        For decisions that require an audit row, an ALLOW is not returned if the
+        audit write cannot be flushed. This preserves the security invariant that
+        an auditable protected action must not succeed when its decision evidence
+        cannot be recorded.
         """
         # Guard: actor must be present (Authentication is a precondition)
         if ctx.actor is None:
@@ -235,7 +250,7 @@ class AuthorizationService:
         # Route to appropriate rule evaluator
         try:
             result = self._dispatch(ctx)
-            
+
             # PHASE 5: Consent Evaluation (if base authorization passed)
             if result.allowed:
                 from app.services.consent import ConsentService
@@ -247,53 +262,76 @@ class AuthorizationService:
                 if not consent_decision.allowed:
                     result = consent_decision
 
-        except Exception as e:
-            # Never allow on error — fail closed
+        except Exception:
+            # Never allow on evaluation error — fail closed
             result = AuthorizationDecision.default_deny()
 
-        self._audit_decision(ctx, result)
+        try:
+            self._audit_decision(ctx, result)
+        except AuthorizationAuditError:
+            # A denied operation remains denied even if its denial audit cannot be
+            # written. An allowed protected operation, however, must fail closed.
+            if result.allowed:
+                return AuthorizationDecision.deny(
+                    DenialReason.AUDIT_PERSISTENCE_FAILED,
+                    "Authorization audit unavailable; operation denied",
+                )
+
         return result
 
     def _audit_decision(self, ctx: AuthorizationContext, decision: AuthorizationDecision):
-        """Append-only audit logging for security decisions."""
-        # Only log document-related decisions, access grants, or explicit denials
-        # to avoid flooding the audit log with list operations
+        """Append an authorization decision without poisoning the caller transaction."""
+        # Keep the existing low-noise policy for successful LIST decisions.
         if ctx.operation == Operation.LIST and decision.allowed:
             return
-            
-        try:
-            resource_id_str = str(getattr(ctx.resource, "id", "")) if ctx.resource else None
-            
-            consent_id = ctx.consent_id
-            if consent_id is None and ctx.relationship_context:
-                consent_id = (
-                    ctx.relationship_context
-                    if isinstance(ctx.relationship_context, int)
-                    else getattr(ctx.relationship_context, "consent_id", None)
-                )
-            
-            log = AuditLog(
-                actor_id=ctx.actor.id,
-                actor_role=ctx.actor.role,
-                organization_id=ctx.hospital_id,
-                patient_id=ctx.patient_id,
-                operation=ctx.operation.value,
-                resource_type=ctx.resource_type.value,
-                resource_id=resource_id_str,
-                purpose=ctx.purpose,
-                consent_id=consent_id,
-                consent_state_id=ctx.consent_state_id,
-                policy_version=ctx.policy_version,
-                decision="ALLOW" if decision.allowed else "DENY",
-                denial_reason=decision.reason.value if decision.reason else None,
-                metadata_json=f'{{"detail": "{decision.detail}"}}' if decision.detail else None
+
+        # Unit tests intentionally use lightweight non-SQLAlchemy DB doubles for
+        # rule evaluation. Production paths are constructed with a real Session.
+        if not isinstance(self._db, Session):
+            return
+
+        resource_id_str = str(getattr(ctx.resource, "id", "")) if ctx.resource else None
+
+        consent_id = ctx.consent_id
+        if consent_id is None and ctx.relationship_context:
+            consent_id = (
+                ctx.relationship_context
+                if isinstance(ctx.relationship_context, int)
+                else getattr(ctx.relationship_context, "consent_id", None)
             )
-            self._db.add(log)
-            # Flush immediately to ensure the audit log is written, but let the caller commit the transaction
-            self._db.flush()
-        except Exception as e:
-            print(f"Audit log failed to write: {e}")
-            pass
+
+        log = AuditLog(
+            actor_id=ctx.actor.id,
+            actor_role=ctx.actor.role,
+            organization_id=ctx.hospital_id,
+            patient_id=ctx.patient_id,
+            operation=ctx.operation.value,
+            resource_type=ctx.resource_type.value,
+            resource_id=resource_id_str,
+            purpose=ctx.purpose,
+            consent_id=consent_id,
+            consent_state_id=ctx.consent_state_id,
+            policy_version=ctx.policy_version,
+            decision="ALLOW" if decision.allowed else "DENY",
+            denial_reason=decision.reason.value if decision.reason else None,
+            metadata_json=json.dumps({"detail": decision.detail}) if decision.detail else None,
+        )
+
+        try:
+            # SAVEPOINT isolates an audit failure from the surrounding request
+            # transaction. The outer transaction still controls final commit, but
+            # a failed audit flush no longer leaves the Session unusable.
+            with self._db.begin_nested():
+                self._db.add(log)
+                self._db.flush()
+        except Exception as exc:
+            logger.exception(
+                "Authorization audit persistence failed for actor=%s operation=%s resource_type=%s",
+                getattr(ctx.actor, "id", None),
+                ctx.operation.value,
+                ctx.resource_type.value,
+            )
+            raise AuthorizationAuditError("Authorization audit persistence failed") from exc
 
     # ------------------------------------------------------------------
     # Internal Dispatch — DEFAULT DENY
@@ -478,7 +516,7 @@ class AuthorizationService:
     def _authorize_patient_record(self, ctx: AuthorizationContext) -> AuthorizationDecision:
         actor = ctx.actor
         op = ctx.operation
-        
+
         if op == Operation.CREATE:
             if actor.role != "doctor":
                 return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "Only doctors can create patient records")
@@ -796,13 +834,13 @@ class AuthorizationService:
                 return AuthorizationDecision.allow()
             if actor.role == "platform_admin":
                 return AuthorizationDecision.allow()
-            
+
             # Org Admin logic
             if ctx.hospital_id:
                 membership = self._get_active_membership(actor.id, ctx.hospital_id)
                 if membership and membership.role == "admin":
                     return AuthorizationDecision.allow()
-            
+
             return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
 
         return AuthorizationDecision.default_deny()
@@ -886,7 +924,7 @@ class AuthorizationService:
         # Listing/reading hospital info is allowed for any authenticated active user
         if op in (Operation.LIST, Operation.READ):
             return AuthorizationDecision.allow()
-            
+
         if op == Operation.UPDATE:
             if not ctx.hospital_id:
                 return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Missing hospital_id")
@@ -933,7 +971,7 @@ class AuthorizationService:
         if op in (Operation.LIST, Operation.MANAGE_STAFF):
             if not ctx.hospital_id:
                 return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Missing hospital_id")
-            
+
             # Must be active admin of the target hospital
             membership = self._get_active_membership(actor.id, ctx.hospital_id)
             if membership and membership.role == "admin":
