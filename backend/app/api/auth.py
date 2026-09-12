@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session as DBSession
 from datetime import datetime, timedelta, timezone
+import logging
 import pyotp
 import uuid
 
@@ -15,11 +16,12 @@ from app.core.security import (
 )
 from app.models.user import User
 from app.models.hospital import HospitalStaff, Hospital
-from app.models.auth import Session, UserMFA
+from app.models.auth import Session, RefreshTokenHistory, UserMFA
 from app.api.dependencies import get_current_active_user, get_current_user
 from pydantic import BaseModel
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Pydantic Schemas
@@ -52,7 +54,7 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         httponly=True,
         secure=settings.ENV == "production",
         samesite="lax",
-        max_age=7 * 24 * 60 * 60, # 7 days
+        max_age=7 * 24 * 60 * 60,
         path="/api/auth"
     )
 
@@ -65,18 +67,29 @@ def clear_refresh_cookie(response: Response):
         samesite="lax"
     )
 
+
+def _revoke_token_family(db: DBSession, user_id: int, token_family: str) -> None:
+    """Revoke every active session belonging to one refresh-token family."""
+    revoked_at = datetime.now(timezone.utc)
+    sessions = db.query(Session).filter(
+        Session.user_id == user_id,
+        Session.token_family == token_family,
+        Session.revoked_at == None,
+    ).all()
+    for session_record in sessions:
+        session_record.revoked_at = revoked_at
+
+
 def _issue_tokens(db: DBSession, response: Response, user: User) -> MFAResponse:
-    """Issues both access and refresh tokens, sets the cookie, and returns the response."""
-    # 1. Access Token (Short Lived)
+    """Issue a short-lived access token plus a rotating refresh-token family."""
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         subject=user.email, expires_delta=access_token_expires
     )
 
-    # 2. Refresh Token (Long Lived, HttpOnly)
     raw_refresh_token = create_refresh_token()
     token_family = str(uuid.uuid4())
-    
+
     session_record = Session(
         user_id=user.id,
         refresh_token_hash=hash_refresh_token(raw_refresh_token),
@@ -109,52 +122,47 @@ def login(request: Request, response: Response, db: DBSession = Depends(get_db),
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     if not user.is_active:
          raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Inactive user account")
 
-    # Check MFA
     mfa_record = db.query(UserMFA).filter(UserMFA.user_id == user.id, UserMFA.is_enabled == True).first()
     if mfa_record:
-        # MFA is required, we do NOT issue tokens yet.
-        # We need a temporary mechanism to pass identity to the /mfa/verify endpoint.
-        # For security, we issue a very short-lived (2 minute) pre-auth token.
+        # This remains the legacy pre-auth representation on dev. R1 owns the
+        # explicit token-stage remediation and will be integrated separately.
         pre_auth_token = create_access_token(subject=user.email, expires_delta=timedelta(minutes=2))
         return MFAResponse(
             mfa_required=True,
-            access_token=pre_auth_token, # Client uses this ONLY for /mfa/verify
+            access_token=pre_auth_token,
             token_type="pre-auth",
             role=user.role,
             detail="MFA verification required."
         )
 
-    # No MFA, issue tokens directly
     return _issue_tokens(db, response, user)
 
 @router.post("/mfa/verify", response_model=MFAResponse)
 def verify_mfa(
-    request: MFAVerifyRequest, 
+    request: MFAVerifyRequest,
     response: Response,
-    current_user: User = Depends(get_current_active_user), # The pre-auth token works here
+    current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
     mfa_record = db.query(UserMFA).filter(UserMFA.user_id == current_user.id).first()
     if not mfa_record or not mfa_record.secret_encrypted:
         raise HTTPException(status_code=400, detail="MFA not configured")
-    
+
     secret = decrypt_mfa_secret(mfa_record.secret_encrypted)
     totp = pyotp.TOTP(secret)
-    
+
     if not totp.verify(request.code):
         raise HTTPException(status_code=401, detail="Invalid MFA code")
-    
-    # If this was the first verification, enable it
+
     if not mfa_record.is_enabled:
         mfa_record.is_enabled = True
         mfa_record.verified_at = datetime.now(timezone.utc)
         db.commit()
 
-    # Issue actual session tokens
     return _issue_tokens(db, response, current_user)
 
 @router.post("/mfa/enroll")
@@ -162,21 +170,21 @@ def enroll_mfa(current_user: User = Depends(get_current_active_user), db: DBSess
     mfa_record = db.query(UserMFA).filter(UserMFA.user_id == current_user.id).first()
     if mfa_record and mfa_record.is_enabled:
         raise HTTPException(status_code=400, detail="MFA is already enabled")
-    
+
     secret = pyotp.random_base32()
     encrypted_secret = encrypt_mfa_secret(secret)
-    
+
     if mfa_record:
         mfa_record.secret_encrypted = encrypted_secret
     else:
         mfa_record = UserMFA(user_id=current_user.id, secret_encrypted=encrypted_secret, is_enabled=False)
         db.add(mfa_record)
-    
+
     db.commit()
-    
+
     totp = pyotp.TOTP(secret)
     uri = totp.provisioning_uri(name=current_user.email, issuer_name="MedFlow Guardian")
-    
+
     return {"secret": secret, "uri": uri, "detail": "Scan the URI with your authenticator app and call /mfa/verify to enable."}
 
 @router.post("/refresh")
@@ -185,25 +193,38 @@ def refresh_token(request: Request, response: Response, db: DBSession = Depends(
     raw_refresh_token = request.cookies.get("refresh_token")
     if not raw_refresh_token:
         raise HTTPException(status_code=401, detail="No refresh token provided")
-    
+
     hashed_token = hash_refresh_token(raw_refresh_token)
-    
-    # Find the session
-    session_record = db.query(Session).filter(Session.refresh_token_hash == hashed_token).first()
-    
+
+    # Serialize rotation of a current refresh token. A concurrent second use
+    # cannot rotate the same token twice; after the first transaction commits it
+    # falls through to the spent-token replay check below.
+    session_record = (
+        db.query(Session)
+        .filter(Session.refresh_token_hash == hashed_token)
+        .with_for_update()
+        .first()
+    )
+
     if not session_record:
-        # Possible Replay Attack! 
-        # The token is valid in format but doesn't exist. If we stored token families, 
-        # we would revoke the entire family here, but since we delete old tokens on rotation, 
-        # we can't easily map a deleted token to a family without an audit table.
-        # For Phase 11, we just deny access.
+        spent_token = db.query(RefreshTokenHistory).filter(
+            RefreshTokenHistory.refresh_token_hash == hashed_token
+        ).first()
+        if spent_token:
+            _revoke_token_family(db, spent_token.user_id, spent_token.token_family)
+            db.commit()
+            logger.warning(
+                "Refresh-token replay detected; revoked family=%s user_id=%s",
+                spent_token.token_family,
+                spent_token.user_id,
+            )
         clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-        
+
     if session_record.revoked_at:
         clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Session revoked")
-        
+
     if session_record.expires_at < datetime.now(timezone.utc):
         db.delete(session_record)
         db.commit()
@@ -212,25 +233,32 @@ def refresh_token(request: Request, response: Response, db: DBSession = Depends(
 
     user = db.query(User).filter(User.id == session_record.user_id).first()
     if not user or not user.is_active:
-        db.delete(session_record)
+        session_record.revoked_at = datetime.now(timezone.utc)
         db.commit()
         clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="User is inactive or deleted")
 
-    # Rotate Token
+    # Preserve the spent fingerprint before rotating the current token. Only the
+    # hash is retained; a database reader cannot recover the raw bearer token.
+    db.add(RefreshTokenHistory(
+        user_id=session_record.user_id,
+        token_family=session_record.token_family,
+        refresh_token_hash=session_record.refresh_token_hash,
+        used_at=datetime.now(timezone.utc),
+    ))
+
     new_raw_refresh = create_refresh_token()
     session_record.refresh_token_hash = hash_refresh_token(new_raw_refresh)
     session_record.last_used_at = datetime.now(timezone.utc)
     db.commit()
-    
+
     set_refresh_cookie(response, new_raw_refresh)
-    
-    # Issue new access token
+
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
         subject=user.email, expires_delta=access_token_expires
     )
-    
+
     return {"access_token": access_token, "token_type": "bearer", "role": user.role}
 
 @router.post("/logout")
@@ -242,14 +270,14 @@ def logout(request: Request, response: Response, db: DBSession = Depends(get_db)
         if session_record:
             session_record.revoked_at = datetime.now(timezone.utc)
             db.commit()
-            
+
     clear_refresh_cookie(response)
     return {"detail": "Successfully logged out"}
 
 @router.post("/logout-all")
 def logout_all(
-    response: Response, 
-    current_user: User = Depends(get_current_active_user), 
+    response: Response,
+    current_user: User = Depends(get_current_active_user),
     db: DBSession = Depends(get_db)
 ):
     sessions = db.query(Session).filter(Session.user_id == current_user.id, Session.revoked_at == None).all()
@@ -268,21 +296,19 @@ def change_password(
 ):
     if not verify_password(request.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Incorrect current password")
-        
+
     current_user.hashed_password = get_password_hash(request.new_password)
-    
-    # Revoke all sessions on password change
+
     sessions = db.query(Session).filter(Session.user_id == current_user.id, Session.revoked_at == None).all()
     for s in sessions:
         s.revoked_at = datetime.now(timezone.utc)
-        
+
     db.commit()
     clear_refresh_cookie(response)
     return {"detail": "Password changed successfully. Please log in again."}
 
 @router.get("/me")
 def get_me(current_user: User = Depends(get_current_active_user), db: DBSession = Depends(get_db)):
-    # Safely return authenticated user's identity and organizational context
     memberships = db.query(HospitalStaff).filter(
         HospitalStaff.user_id == current_user.id,
         HospitalStaff.is_active == True
@@ -318,12 +344,11 @@ def update_me(request: UpdateProfileRequest, current_user: User = Depends(get_cu
     if request.full_name is not None:
         current_user.full_name = request.full_name
     if request.email is not None:
-        # Simple check for existing email if changing
         if request.email != current_user.email:
             existing = db.query(User).filter(User.email == request.email).first()
             if existing:
                 raise HTTPException(status_code=400, detail="Email already registered")
         current_user.email = request.email
-        
+
     db.commit()
     return {"detail": "Profile updated successfully"}
