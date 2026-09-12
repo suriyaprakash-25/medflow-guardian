@@ -123,6 +123,38 @@ def inject_data():
             
         # 6. Access Requests & Grants
         print("Injecting Access Requests & Grants...")
+        consent_by_doctor = {}
+        for doctor in (doctor1, doctor2):
+            if doctor is None:
+                continue
+            consent = Consent(
+                patient_id=patient.id,
+                doctor_id=doctor.id,
+                hospital_id=hospital.id,
+                status="active",
+            )
+            db.add(consent)
+            db.flush()
+            policy = ConsentPolicyVersion(
+                consent_id=consent.id,
+                version_number=1,
+                policy_payload={
+                    "allowed_purposes": ["treatment"],
+                    "allowed_operations": ["read", "download"],
+                },
+                status="active",
+            )
+            db.add(policy)
+            db.flush()
+            db.add(
+                ConsentState(
+                    consent_id=consent.id,
+                    policy_version_id=policy.id,
+                    status="active",
+                )
+            )
+            consent_by_doctor[doctor.id] = consent.id
+
         for i in range(10):
             req = DocumentAccessRequest(
                 patient_id=patient.id,
@@ -141,6 +173,7 @@ def inject_data():
                     doctor_id=req.requesting_doctor_id,
                     hospital_id=hospital.id,
                     access_request_id=req.id,
+                    consent_id=consent_by_doctor[req.requesting_doctor_id],
                     status="active",
                     expires_at=now + timedelta(days=30)
                 )
