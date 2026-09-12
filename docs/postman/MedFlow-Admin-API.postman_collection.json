@@ -1,0 +1,69 @@
+{
+  "info": {
+    "name": "MedFlow-Admin-API",
+    "description": "Postman Collection for MedFlow Guardian Admin Portal API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Authentication",
+      "item": [
+        {
+          "name": "Admin Login",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "auth", "login"] },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Admin Endpoints",
+      "item": [
+        {
+          "name": "Get Dashboard Metrics",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/dashboard", "host": ["{{baseUrl}}"], "path": ["api", "admin", "dashboard"] },
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ]
+          }
+        },
+        {
+          "name": "Get Staff",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/staff?hospital_id={{organizationId}}", "host": ["{{baseUrl}}"], "path": ["api", "admin", "staff"], "query": [{ "key": "hospital_id", "value": "{{organizationId}}" }] },
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ]
+          }
+        },
+        {
+          "name": "Get Audit Logs",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/admin/audit?hospital_id={{organizationId}}", "host": ["{{baseUrl}}"], "path": ["api", "admin", "audit"], "query": [{ "key": "hospital_id", "value": "{{organizationId}}" }] },
+            "header": [ { "key": "Authorization", "value": "Bearer {{accessToken}}" } ]
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -65,6 +65,28 @@ def get_patient_appointments(
 
     return db.query(Appointment).filter(Appointment.patient_id == patient_id).order_by(Appointment.scheduled_time.desc()).all()
 
+@router.get("/appointments/patient", response_model=List[AppointmentResponse])
+def get_my_appointments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    if current_user.role != "patient":
+        raise HTTPException(status_code=403, detail="Not a patient")
+        
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.LIST,
+        resource_type=ResourceType.APPOINTMENT,
+        db=db,
+        patient_id=current_user.id
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    return db.query(Appointment).filter(Appointment.patient_id == current_user.id).order_by(Appointment.scheduled_time.desc()).all()
+
 @router.get("/appointments/doctor/{doctor_id}", response_model=List[AppointmentResponse])
 def get_doctor_appointments(
     doctor_id: int,

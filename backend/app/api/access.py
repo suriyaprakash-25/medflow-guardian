@@ -145,14 +145,13 @@ def approve_request(
     req.status = "approved"
     req.responded_at = datetime.utcnow()
 
-    # Validate selected docs
-    approved_docs = db.query(MedicalDocument).filter(
-        MedicalDocument.id.in_(approval_data.document_ids),
-        MedicalDocument.patient_id == current_patient.id
-    ).all()
-
-    if not approved_docs:
-        raise HTTPException(status_code=400, detail="No valid documents selected")
+    # Validate selected docs (if any were provided)
+    approved_docs = []
+    if approval_data.document_ids:
+        approved_docs = db.query(MedicalDocument).filter(
+            MedicalDocument.id.in_(approval_data.document_ids),
+            MedicalDocument.patient_id == current_patient.id
+        ).all()
 
     # Phase 5: Create Governance Entities (Consent, Policy, State)
     consent = Consent(
@@ -394,8 +393,9 @@ def get_doctor_grants(
 
     # Automatically mark expired grants as such in memory for the response
     # (A background job or access-check handles true expiration, but for UI clarity we check it here)
+    from datetime import timezone
     for g in grants:
-        if g.status == "active" and g.expires_at < datetime.utcnow():
+        if g.status == "active" and g.expires_at < datetime.now(timezone.utc):
             g.status = "expired"
     
     return grants

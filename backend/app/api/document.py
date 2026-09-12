@@ -41,7 +41,9 @@ ALLOWED_MIME_TYPES = {
     "application/pdf",
     "image/jpeg",
     "image/png",
-    "text/plain"
+    "text/plain",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword"
 }
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
@@ -186,7 +188,6 @@ def download_document(
     document_id: int,
     background_tasks: BackgroundTasks,
     purpose: Optional[str] = None,
-    enforcement_state_id: Optional[int] = None,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
     auth_svc: AuthorizationService = Depends(get_authorization_service)
@@ -206,8 +207,7 @@ def download_document(
         resource=doc,  # None if not found; engine handles 404 denial
         hospital_id=doc.hospital_id if doc else None,
         patient_id=doc.patient_id if doc else None,
-        purpose=purpose,
-        enforcement_state_id=enforcement_state_id
+        purpose=purpose
     ))
     if not decision.allowed:
         # Use 404 to avoid leaking document existence to unauthorized actors

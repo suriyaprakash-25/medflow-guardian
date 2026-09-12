@@ -2,15 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { api as axios } from '../lib/api';
 import { Calendar, Clock, MapPin, User as UserIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { useDoctorContext } from '../components/Layout';
 
 export default function Appointments() {
+  const { currentUser } = useDoctorContext();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchAppointments = async () => {
+    if (!currentUser?.id) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('/api/appointments/doctor', {
+      const res = await axios.get(`/api/appointments/doctor/${currentUser.id}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);
@@ -23,7 +26,7 @@ export default function Appointments() {
 
   useEffect(() => {
     fetchAppointments();
-  }, []);
+  }, [currentUser?.id]);
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading appointments...</div>;
 

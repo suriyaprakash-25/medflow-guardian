@@ -19,11 +19,8 @@ def test_document_download_stale_enforcement_state_denied():
     3. Seed a Consent, ConsentPolicyVersion, and an ACTIVE ConsentState (id=43).
     4. Seed a DocumentAccessGrant linking the Doctor to the Consent.
     5. Override the `get_practitioner_identity` dependency to simulate the logged-in Doctor.
-    6. Doctor requests `/api/documents/{doc_id}/download?enforcement_state_id=42`
-    
-    EXPECTED: 
-    - The backend `download_document` API parses `enforcement_state_id=42`.
-    - It delegates to `AuthorizationService` -> `ConsentService`.
+    6. Doctor requests `/api/documents/{doc_id}/download?EXPECTED: 
+    - The backend `download_document` API parses `- It delegates to `AuthorizationService` -> `ConsentService`.
     - `ConsentService` loads Authoritative State `43`.
     - 43 != 42.
     - `ConsentService` returns DENY (ENFORCEMENT_STATE_STALE).

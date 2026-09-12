@@ -11,6 +11,9 @@ from app.models.access import DocumentAccessRequest, DocumentAccessGrant
 from app.models.consent import ConsentState
 from app.api.dependencies import get_current_user
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
+from app.schemas.admin import HospitalCreate, HospitalUpdate, StaffCreate, StaffUpdate
+from app.schemas.hospital import Hospital as HospitalSchema
+from app.core.security import get_password_hash
 
 router = APIRouter()
 
@@ -137,3 +140,193 @@ def get_audit_logs(
         "limit": limit,
         "offset": offset
     }
+
+@router.post("/organization", response_model=HospitalSchema)
+def create_organization(
+    data: HospitalCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.MANAGE_ORGANIZATIONS,
+        resource_type=ResourceType.HOSPITAL,
+        db=db
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    hospital = Hospital(
+        name=data.name,
+        address=data.address,
+        contact_info=data.contact_info,
+        is_active=data.is_active
+    )
+    db.add(hospital)
+    db.commit()
+    db.refresh(hospital)
+    return hospital
+
+@router.put("/organization/{hospital_id}", response_model=HospitalSchema)
+def update_organization(
+    hospital_id: int,
+    data: HospitalUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.UPDATE,
+        resource_type=ResourceType.HOSPITAL,
+        db=db,
+        hospital_id=hospital_id
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    hospital = db.query(Hospital).filter(Hospital.id == hospital_id).first()
+    if not hospital:
+        raise HTTPException(status_code=404, detail="Hospital not found")
+
+    if data.name is not None:
+        hospital.name = data.name
+    if data.address is not None:
+        hospital.address = data.address
+    if data.contact_info is not None:
+        hospital.contact_info = data.contact_info
+    if data.is_active is not None:
+        hospital.is_active = data.is_active
+
+    db.commit()
+    db.refresh(hospital)
+    return hospital
+
+@router.post("/staff")
+def provision_staff(
+    hospital_id: int,
+    data: StaffCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.MANAGE_STAFF,
+        resource_type=ResourceType.STAFF,
+        db=db,
+        hospital_id=hospital_id
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    # Check if user exists
+    user = db.query(User).filter(User.email == data.email).first()
+    if not user:
+        # For simplicity in this demo, provision a new basic user if they don't exist
+        user = User(
+            email=data.email,
+            hashed_password=get_password_hash("password123"), # Default password
+            role="doctor", # Default base role
+            full_name=data.email.split("@")[0]
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    # Check if they are already in the hospital
+    existing = db.query(HospitalStaff).filter(
+        HospitalStaff.user_id == user.id,
+        HospitalStaff.hospital_id == hospital_id
+    ).first()
+
+    if existing:
+        if not existing.is_active:
+            existing.is_active = True
+            existing.role = data.role
+            db.commit()
+            db.refresh(existing)
+            return {"message": "Reactivated staff", "membership_id": existing.id}
+        raise HTTPException(status_code=400, detail="User is already active staff here")
+
+    staff = HospitalStaff(
+        user_id=user.id,
+        hospital_id=hospital_id,
+        role=data.role,
+        is_active=True
+    )
+    db.add(staff)
+    db.commit()
+    db.refresh(staff)
+    return {"message": "Staff provisioned successfully", "membership_id": staff.id}
+
+@router.put("/staff/{membership_id}")
+def update_staff(
+    hospital_id: int,
+    membership_id: int,
+    data: StaffUpdate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.MANAGE_STAFF,
+        resource_type=ResourceType.STAFF,
+        db=db,
+        hospital_id=hospital_id
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    staff = db.query(HospitalStaff).filter(
+        HospitalStaff.id == membership_id,
+        HospitalStaff.hospital_id == hospital_id
+    ).first()
+    
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff membership not found in this hospital")
+
+    if data.role is not None:
+        staff.role = data.role
+    if data.is_active is not None:
+        staff.is_active = data.is_active
+
+    db.commit()
+    return {"message": "Staff updated successfully"}
+
+@router.delete("/staff/{membership_id}")
+def remove_staff(
+    hospital_id: int,
+    membership_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    auth_svc = AuthorizationService(db)
+    ctx = AuthorizationContext(
+        actor=current_user,
+        operation=Operation.MANAGE_STAFF,
+        resource_type=ResourceType.STAFF,
+        db=db,
+        hospital_id=hospital_id
+    )
+    decision = auth_svc.authorize(ctx)
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.reason)
+
+    staff = db.query(HospitalStaff).filter(
+        HospitalStaff.id == membership_id,
+        HospitalStaff.hospital_id == hospital_id
+    ).first()
+    
+    if not staff:
+        raise HTTPException(status_code=404, detail="Staff membership not found")
+
+    staff.is_active = False
+    db.commit()
+    return {"message": "Staff deactivated successfully"}

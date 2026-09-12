@@ -7,7 +7,7 @@ import { Badge } from '@shared/ui/Badge';
 import { ConfirmModal } from '@shared/ui/ConfirmModal';
 import { ShieldAlert, FileText, CheckCircle, XCircle, Building, Clock } from 'lucide-react';
 import { EmptyState } from '@shared/ui/EmptyState';
-
+import { toast } from 'react-hot-toast';
 export default function AccessRequests() {
   const { accessRequests, patientVisits, durations, setDurations, handleApproveAccess, handleRejectAccess } = usePatientContext();
 
@@ -37,6 +37,8 @@ export default function AccessRequests() {
     if (activeRequest) handleRejectAccess(activeRequest.id);
     setConfirmRejectId(null);
   };
+
+  console.log("AccessRequests Render - confirmApproveId:", confirmApproveId, "isOpen:", !!confirmApproveId);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
@@ -111,19 +113,26 @@ export default function AccessRequests() {
                       </Select>
                       <div className="flex gap-2 sm:w-2/3">
                         <Button 
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white" 
-                          onClick={() => setConfirmApproveId(req.id)}
+                          className="flex-1 flex flex-row items-center justify-center gap-2 text-white border-none whitespace-nowrap h-10 px-3" 
+                          style={{ backgroundColor: '#10b981' }}
+                          onClick={() => {
+                            toast('Please confirm approval in the popup window.', { icon: 'ℹ️' });
+                            setConfirmApproveId(req.id);
+                          }}
                         >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Approve
+                          <CheckCircle className="h-4 w-4 shrink-0" />
+                          <span>Approve</span>
                         </Button>
                         <Button 
                           variant="outline" 
-                          className="flex-1 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50" 
-                          onClick={() => setConfirmRejectId(req.id)}
+                          className="flex-1 flex flex-row items-center justify-center gap-2 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 whitespace-nowrap h-10 px-3" 
+                          onClick={() => {
+                            toast('Please confirm rejection in the popup window.', { icon: 'ℹ️' });
+                            setConfirmRejectId(req.id);
+                          }}
                         >
-                          <XCircle className="h-4 w-4 mr-2" />
-                          Reject
+                          <XCircle className="h-4 w-4 shrink-0" />
+                          <span>Reject</span>
                         </Button>
                       </div>
                     </div>

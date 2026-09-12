@@ -28,6 +28,10 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
+class UpdateProfileRequest(BaseModel):
+    full_name: str | None = None
+    email: str | None = None
+
 class MFAVerifyRequest(BaseModel):
     code: str
 
@@ -308,3 +312,18 @@ def get_me(current_user: User = Depends(get_current_active_user), db: DBSession 
         },
         "memberships": organizations
     }
+
+@router.patch("/me")
+def update_me(request: UpdateProfileRequest, current_user: User = Depends(get_current_active_user), db: DBSession = Depends(get_db)):
+    if request.full_name is not None:
+        current_user.full_name = request.full_name
+    if request.email is not None:
+        # Simple check for existing email if changing
+        if request.email != current_user.email:
+            existing = db.query(User).filter(User.email == request.email).first()
+            if existing:
+                raise HTTPException(status_code=400, detail="Email already registered")
+        current_user.email = request.email
+        
+    db.commit()
+    return {"detail": "Profile updated successfully"}

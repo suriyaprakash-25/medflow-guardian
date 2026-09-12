@@ -1,0 +1,319 @@
+{
+    "info": {
+        "_postman_id": "b1a1b1b1-b1b1-b1b1-b1b1-b1b1b1b1b1b1",
+        "name": "MedFlow-Admin-Platform",
+        "description": "Postman collection for Phase B1 Admin Platform Verification",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "Organizations",
+            "item": [
+                {
+                    "name": "Provision Organization",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"General Hospital\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/organization",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "organization"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Organization",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"is_active\": false\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/organization/{{org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "organization",
+                                "{{org_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Staff Management",
+            "item": [
+                {
+                    "name": "Provision Staff",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"newdoc@hospital.com\",\n    \"role\": \"doctor\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/staff?hospital_id={{org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "staff"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hospital_id",
+                                    "value": "{{org_id}}"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Staff Role",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"role\": \"admin\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/staff/{{membership_id}}?hospital_id={{org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "staff",
+                                "{{membership_id}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hospital_id",
+                                    "value": "{{org_id}}"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Remove Staff",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/staff/{{membership_id}}?hospital_id={{org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "staff",
+                                "{{membership_id}}"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hospital_id",
+                                    "value": "{{org_id}}"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Security Boundary Checks",
+            "item": [
+                {
+                    "name": "Org Admin Creates Org (FAIL)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Hack Hospital\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/organization",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "organization"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Org Admin Modifies Other Org (FAIL)",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"is_active\": false\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/organization/{{other_org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "organization",
+                                "{{other_org_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Org Admin Modifies Other Org Staff (FAIL)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{org_admin_token}}"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"hack@hacker.com\",\n    \"role\": \"admin\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/admin/staff?hospital_id={{other_org_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "admin",
+                                "staff"
+                            ],
+                            "query": [
+                                {
+                                    "key": "hospital_id",
+                                    "value": "{{other_org_id}}"
+                                }
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ],
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8000"
+        },
+        {
+            "key": "admin_token",
+            "value": ""
+        },
+        {
+            "key": "org_admin_token",
+            "value": ""
+        },
+        {
+            "key": "org_id",
+            "value": "1"
+        },
+        {
+            "key": "other_org_id",
+            "value": "2"
+        },
+        {
+            "key": "membership_id",
+            "value": "1"
+        }
+    ]
+}

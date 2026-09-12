@@ -60,6 +60,13 @@ async def submit_reading(
 
     return db_reading
 
+@router.get("/readings/patient", response_model=List[PatientReadingSchema])
+def get_patient_own_readings(
+    db: Session = Depends(get_db),
+    current_patient: User = Depends(get_patient_identity)
+):
+    return db.query(PatientReading).filter(PatientReading.patient_id == current_patient.id).order_by(PatientReading.created_at.desc()).limit(50).all()
+
 @router.get("/readings/{patient_id}", response_model=List[PatientReadingSchema])
 def get_readings(
     patient_id: int,
@@ -79,13 +86,6 @@ def get_readings(
 
     return db.query(PatientReading).filter(PatientReading.patient_id == patient_id).order_by(PatientReading.created_at.desc()).limit(50).all()
 
-@router.get("/readings/patient", response_model=List[PatientReadingSchema])
-def get_patient_own_readings(
-    db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
-):
-    return db.query(PatientReading).filter(PatientReading.patient_id == current_patient.id).order_by(PatientReading.created_at.desc()).limit(50).all()
-
 @router.post("/messages", response_model=MessageSchema)
 async def send_message(
     msg_in: MessageCreate,
@@ -98,7 +98,8 @@ async def send_message(
         operation=Operation.CREATE,
         resource_type=ResourceType.MESSAGE,
         db=db,
-        patient_id=msg_in.receiver_id  # engine determines relationship based on actor role
+        patient_id=current_user.id if current_user.role == "patient" else msg_in.receiver_id,
+        relationship_context=msg_in.receiver_id
     ))
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)
@@ -138,7 +139,8 @@ def get_messages(
         operation=Operation.LIST,
         resource_type=ResourceType.MESSAGE,
         db=db,
-        patient_id=user_id  # engine determines relationship based on actor role
+        patient_id=current_user.id if current_user.role == "patient" else user_id,
+        relationship_context=user_id
     ))
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail)

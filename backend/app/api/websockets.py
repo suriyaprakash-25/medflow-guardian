@@ -100,7 +100,7 @@ class ConnectionManager:
                 db=db,
                 patient_id=patient_id,
                 hospital_id=data.get("hospital_id"),
-                purpose="TREATMENT"
+                purpose=data.get("purpose")
             )
             decision = auth_svc.authorize(ctx)
             return decision.allowed

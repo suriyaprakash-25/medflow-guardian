@@ -2,7 +2,6 @@ import { useEffect, useRef } from 'react';
 import { usePatientContext } from '../components/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
-import { Input } from '@shared/ui/Input';
 import { Select } from '@shared/ui/Select';
 import { HeartPulse, MessageSquare, Send, PlusCircle } from 'lucide-react';
 
@@ -165,7 +164,7 @@ export default function DashboardView() {
                     <div 
                       className={`max-w-[85%] px-4 py-2 rounded-2xl text-sm ${
                         isMine 
-                          ? 'bg-primary text-primary-foreground rounded-br-sm' 
+                          ? 'bg-blue-600 text-white rounded-br-sm' 
                           : 'bg-white border border-slate-200 text-slate-800 rounded-bl-sm shadow-sm'
                       }`}
                     >
@@ -182,15 +181,22 @@ export default function DashboardView() {
           </CardContent>
           
           <div className="p-4 border-t border-slate-100 bg-white rounded-b-xl">
-            <form onSubmit={sendMessage} className="flex gap-2">
-              <Input 
+            <form onSubmit={sendMessage} className="flex gap-2 relative">
+              <input 
+                type="text" 
                 value={chatInput} 
                 onChange={e => setChatInput(e.target.value)} 
                 placeholder="Type a message..." 
+                className="flex-1 border border-slate-300 rounded-full pl-4 pr-12 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50"
                 disabled={!activeDoctorId}
-                className="flex-1"
               />
-              <Button type="submit" size="icon" disabled={!activeDoctorId || !chatInput.trim()}>
+              <Button 
+                type="submit" 
+                size="icon"
+                className="absolute right-1 top-1 bottom-1 h-auto w-10 rounded-full bg-blue-600 hover:bg-blue-700 text-white disabled:bg-slate-300 disabled:opacity-50"
+                disabled={!activeDoctorId || !chatInput.trim()}
+                style={{ backgroundColor: (!activeDoctorId || !chatInput.trim()) ? '' : '#2563eb' }}
+              >
                 <Send className="h-4 w-4" />
               </Button>
             </form>

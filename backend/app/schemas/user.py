@@ -4,6 +4,7 @@ from typing import Optional, List
 class UserBase(BaseModel):
     email: EmailStr
     full_name: Optional[str] = None
+    phone_number: Optional[str] = None
     role: str
 
 class UserCreate(UserBase):
@@ -20,6 +21,16 @@ class User(UserBase):
 
 class PatientProfileBase(BaseModel):
     medical_history: Optional[str] = None
+    date_of_birth: Optional[str] = None
+    address: Optional[str] = None
+    emergency_contact_name: Optional[str] = None
+    emergency_contact_phone: Optional[str] = None
+    blood_type: Optional[str] = None
+    allergies: Optional[str] = None
+
+class PatientProfileUpdate(PatientProfileBase):
+    full_name: Optional[str] = None
+    phone_number: Optional[str] = None
 
 class PatientProfile(PatientProfileBase):
     id: int

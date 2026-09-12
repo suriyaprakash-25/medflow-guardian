@@ -5,6 +5,8 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import Staff from './pages/Staff';
 import Audit from './pages/Audit';
+import Settings from './pages/Settings';
+import Organizations from './pages/Organizations';
 
 function ProtectedRoute() {
   const token = localStorage.getItem('token');
@@ -23,8 +25,10 @@ export default function App() {
           <Route element={<Layout />}>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/organizations" element={<Organizations />} />
             <Route path="/staff" element={<Staff />} />
             <Route path="/audit" element={<Audit />} />
+            <Route path="/settings" element={<Settings />} />
           </Route>
         </Route>
       </Routes>

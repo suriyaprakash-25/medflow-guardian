@@ -23,12 +23,14 @@ router = APIRouter()
 @router.get("/interoperability/patients/{patient_id}/export")
 def export_patient_fhir_bundle(
     patient_id: int,
-    enforcement_state_id: Optional[int] = Query(None),
-    purpose: Optional[str] = Query("TREATMENT"),
+    purpose: str = Query(...),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
-    
+    """
+    Exports a patient's complete clinical record as a FHIR R4 Bundle.
+    Protected by the Central Authorization Engine.
+    """
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
         actor=current_user,
@@ -36,8 +38,7 @@ def export_patient_fhir_bundle(
         resource_type=ResourceType.FHIR_EXPORT,
         db=db,
         patient_id=patient_id,
-        purpose=purpose,
-        enforcement_state_id=enforcement_state_id
+        purpose=purpose
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:

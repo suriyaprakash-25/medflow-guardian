@@ -16,8 +16,7 @@ class ConsentService:
     def evaluate(
         self, 
         ctx: AuthorizationContext, 
-        purpose: Optional[str], 
-        enforcement_state_id: Optional[int]
+        purpose: Optional[str]
     ) -> AuthorizationDecision:
         """
         Evaluate if the current operation is permitted by the patient's active consent policy.
@@ -61,13 +60,7 @@ class ConsentService:
             )
 
         # 4. ENFORCEMENT STATE STALE-STATE RULE
-        if enforcement_state_id is not None:
-            if authoritative_state.id != enforcement_state_id:
-                # We use INVALID_CONTEXT for now, but semantically it's ENFORCEMENT_STATE_STALE
-                return AuthorizationDecision.deny(
-                    DenialReason.INVALID_CONTEXT, 
-                    f"ENFORCEMENT_STATE_STALE: Authoritative state is {authoritative_state.id}, but enforcement requested {enforcement_state_id}"
-                )
+        # Removed: Backend is a collocated PEP.
 
         # 5. Check if Consent is actually ACTIVE
         if authoritative_state.status != ConsentStatus.ACTIVE.value:

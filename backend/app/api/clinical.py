@@ -52,7 +52,6 @@ def create_prescription(
 @router.get("/prescriptions/patient/{patient_id}", response_model=List[PrescriptionResponse])
 def get_patient_prescriptions(
     patient_id: int,
-    enforcement_state_id: Optional[int] = Query(None),
     purpose: Optional[str] = Query("TREATMENT"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -64,8 +63,7 @@ def get_patient_prescriptions(
         resource_type=ResourceType.PATIENT_RECORD,
         db=db,
         patient_id=patient_id,
-        purpose=purpose,
-        enforcement_state_id=enforcement_state_id
+        purpose=purpose
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
@@ -114,7 +112,6 @@ def create_lab_result(
 @router.get("/labs/patient/{patient_id}", response_model=List[LabResultResponse])
 def get_patient_labs(
     patient_id: int,
-    enforcement_state_id: Optional[int] = Query(None),
     purpose: Optional[str] = Query("TREATMENT"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -126,8 +123,7 @@ def get_patient_labs(
         resource_type=ResourceType.PATIENT_RECORD,
         db=db,
         patient_id=patient_id,
-        purpose=purpose,
-        enforcement_state_id=enforcement_state_id
+        purpose=purpose
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
@@ -173,7 +169,6 @@ def create_clinical_note(
 @router.get("/notes/patient/{patient_id}", response_model=List[ClinicalNoteResponse])
 def get_patient_notes(
     patient_id: int,
-    enforcement_state_id: Optional[int] = Query(None),
     purpose: Optional[str] = Query("TREATMENT"),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
@@ -185,8 +180,7 @@ def get_patient_notes(
         resource_type=ResourceType.PATIENT_RECORD,
         db=db,
         patient_id=patient_id,
-        purpose=purpose,
-        enforcement_state_id=enforcement_state_id
+        purpose=purpose
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:

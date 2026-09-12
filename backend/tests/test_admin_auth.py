@@ -85,3 +85,62 @@ def test_org_admin_cannot_access_other_hospital(db_session: Session):
     res2 = client.get(f"/api/admin/dashboard?hospital_id={h2.id}", headers={"Authorization": f"Bearer {token}"})
     print("res2 JSON:", res2.json())
     assert res2.status_code == 403
+
+def test_platform_admin_can_create_org(db_session: Session):
+    admin = User(email="platform@test.com", hashed_password="hashed", role="platform_admin")
+    db_session.add(admin)
+    db_session.commit()
+    token = create_token("platform@test.com")
+    
+    res = client.post("/api/admin/organization", json={"name": "New Org"}, headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    assert res.json()["name"] == "New Org"
+
+def test_org_admin_cannot_create_org(db_session: Session):
+    h1 = Hospital(name="H1")
+    db_session.add(h1)
+    db_session.commit()
+    org_admin = User(email="org_admin_create@test.com", hashed_password="hashed", role="doctor")
+    db_session.add(org_admin)
+    db_session.commit()
+    staff = HospitalStaff(user_id=org_admin.id, hospital_id=h1.id, role="admin")
+    db_session.add(staff)
+    db_session.commit()
+    token = create_token("org_admin_create@test.com")
+    
+    res = client.post("/api/admin/organization", json={"name": "New Org"}, headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 403
+
+def test_org_admin_can_provision_staff_in_own_org(db_session: Session):
+    h1 = Hospital(name="H1")
+    db_session.add(h1)
+    db_session.commit()
+    org_admin = User(email="org_admin_staff@test.com", hashed_password="hashed", role="doctor")
+    db_session.add(org_admin)
+    db_session.commit()
+    staff = HospitalStaff(user_id=org_admin.id, hospital_id=h1.id, role="admin")
+    db_session.add(staff)
+    db_session.commit()
+    token = create_token("org_admin_staff@test.com")
+    
+    res = client.post(f"/api/admin/staff?hospital_id={h1.id}", json={"email": "new_staff@test.com", "role": "doctor"}, headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    assert "membership_id" in res.json()
+
+def test_org_admin_cannot_provision_staff_in_other_org(db_session: Session):
+    h1 = Hospital(name="H1")
+    h2 = Hospital(name="H2")
+    db_session.add_all([h1, h2])
+    db_session.commit()
+    
+    org_admin = User(email="org_admin_cross@test.com", hashed_password="hashed", role="doctor")
+    db_session.add(org_admin)
+    db_session.commit()
+    staff = HospitalStaff(user_id=org_admin.id, hospital_id=h1.id, role="admin")
+    db_session.add(staff)
+    db_session.commit()
+    
+    token = create_token("org_admin_cross@test.com")
+    res = client.post(f"/api/admin/staff?hospital_id={h2.id}", json={"email": "hacker@test.com", "role": "admin"}, headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 403
+

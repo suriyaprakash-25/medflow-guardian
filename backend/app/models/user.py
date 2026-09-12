@@ -9,6 +9,7 @@ class User(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     full_name = Column(String, index=True)
+    phone_number = Column(String, nullable=True)
     role = Column(String, nullable=False) # "doctor" or "patient"
     is_active = Column(Boolean, default=True)
 
@@ -41,6 +42,14 @@ class PatientProfile(Base):
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
     assigned_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     medical_history = Column(String, nullable=True)
+    
+    # New demographic & emergency fields
+    date_of_birth = Column(String, nullable=True) # ISO format YYYY-MM-DD
+    address = Column(String, nullable=True)
+    emergency_contact_name = Column(String, nullable=True)
+    emergency_contact_phone = Column(String, nullable=True)
+    blood_type = Column(String, nullable=True)
+    allergies = Column(String, nullable=True)
 
     user = relationship("User", back_populates="patient_profile", foreign_keys=[user_id])
     assigned_doctor = relationship("User", back_populates="assigned_patients", foreign_keys=[assigned_doctor_id])

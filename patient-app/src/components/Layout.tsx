@@ -77,6 +77,9 @@ export interface OutletContextType {
   auditLogs: any[];
   handleMarkRead: (id: number) => Promise<void>;
   handleMarkAllRead: () => Promise<void>;
+  
+  patientProfile: any;
+  setPatientProfile: (val: any) => void;
 }
 
 export function usePatientContext() {
@@ -106,6 +109,16 @@ export default function Layout() {
 
   const [activeDoctorId, setActiveDoctorId] = useState<number | null>(null);
   const [patientVisits, setPatientVisits] = useState<any[]>([]);
+  const [patientProfile, setPatientProfile] = useState<any>(null);
+
+  const fetchPatientProfile = useCallback(async () => {
+    try {
+      const res = await axios.get('/api/users/patient-profile', { headers });
+      setPatientProfile(res.data);
+    } catch (error) {
+      console.error(error);
+    }
+  }, [token]);
 
   const fetchPatientVisits = useCallback(async () => {
     try {
@@ -198,13 +211,17 @@ export default function Layout() {
     // Token is guaranteed by ProtectedRoute
     
     // Fetch authoritative identity from backend
-    axios.get('/api/auth/me', { headers }).then(() => {
-      // Identity successfully verified
+    axios.get('/api/auth/me', { headers }).then((res) => {
+      if (res.data.system_role !== 'patient' && res.data.role !== 'patient') {
+        toast.error('Session mismatch: You are logged in with a non-patient account. Please log in again.');
+        handleLogout();
+      }
     }).catch(err => {
       console.error(err);
-      if (err.response?.status === 401) handleLogout();
+      if (err.response?.status === 401 || err.status === 401) handleLogout();
     });
     
+    fetchPatientProfile();
     fetchPatientVisits();
     fetchRequests();
     fetchReadings();
@@ -288,6 +305,7 @@ export default function Layout() {
     }
     try {
       await axios.post('/api/triage/', { symptoms, hospital_id: parseInt(selectedHospitalId) }, { headers });
+      toast.success('Symptoms submitted successfully!');
       setSymptoms('');
       setSelectedHospitalId('');
       await fetchRequests(); // refresh immediately to show AI result
@@ -308,8 +326,9 @@ export default function Layout() {
       }, { headers });
       setMessages(prev => [...prev, res.data]);
       setChatInput('');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      toast.error(error.message || 'Failed to send message');
     }
   };
 
@@ -352,6 +371,7 @@ export default function Layout() {
       await axios.post(`/api/access-requests/${reqId}/reject`, {
         rejection_reason: 'Rejected by patient'
       }, { headers });
+      toast.success('Access request rejected');
       fetchAccessData();
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Rejection failed');
@@ -361,6 +381,7 @@ export default function Layout() {
   const handleRevokeGrant = async (grantId: number) => {
     try {
       await axios.post(`/api/access-grants/${grantId}/revoke`, {}, { headers });
+      toast.success('Access revoked successfully');
       fetchAccessData();
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Revocation failed');
@@ -380,6 +401,7 @@ export default function Layout() {
     try {
       await axios.post(`/api/notifications/read-all`, {}, { headers });
       fetchPhase4Data();
+      toast.success('All notifications marked as read');
     } catch (error) {
       console.error(error);
     }
@@ -400,7 +422,8 @@ export default function Layout() {
     activeDoctorId, setActiveDoctorId,
     patientVisits, documents, docFilterHospital, setDocFilterHospital, docFilterType, setDocFilterType, handleDownload,
     accessRequests, accessGrants, durations, setDurations, handleApproveAccess, handleRejectAccess, handleRevokeGrant,
-    notifications, auditLogs, handleMarkRead, handleMarkAllRead
+    notifications, auditLogs, handleMarkRead, handleMarkAllRead,
+    patientProfile, setPatientProfile
   };
 
   return (

@@ -50,7 +50,7 @@ export default function AccessControl() {
                         <Search className="h-4 w-4 text-slate-400" />
                       </div>
                       <input 
-                        className="w-full pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
+                        className="w-full !pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
                         type="number" 
                         placeholder="Patient ID (e.g., 3)" 
                         value={reqPatientId} 
@@ -132,7 +132,6 @@ export default function AccessControl() {
                   <Button 
                     type="submit" 
                     className="w-full bg-blue-600 hover:bg-blue-700" 
-                    disabled={selectedDocs.length === 0 || !reqHospitalId}
                   >
                     Submit Request to Patient
                   </Button>

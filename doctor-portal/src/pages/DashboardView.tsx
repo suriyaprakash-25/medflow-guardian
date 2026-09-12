@@ -62,12 +62,12 @@ export default function DashboardView() {
   // Doctor Dashboard
   const criticalCount = requests.filter(r => r.priority === 'Critical' && r.status !== 'Resolved').length;
   const highCount = requests.filter(r => r.priority === 'High' && r.status !== 'Resolved').length;
-  const pendingCount = requests.filter(r => r.status === 'Submitted' || r.status === 'Needs Review').length;
+  const pendingCount = requests.filter(r => r.status === 'pending').length;
 
   const filteredRequests = requests.filter(r => {
     if (filter === 'critical') return r.priority === 'Critical';
     if (filter === 'high') return r.priority === 'High';
-    if (filter === 'pending') return r.status === 'Submitted' || r.status === 'Needs Review';
+    if (filter === 'pending') return r.status === 'pending';
     return true;
   });
 
@@ -84,8 +84,7 @@ export default function DashboardView() {
     switch (status) {
       case 'Resolved': return <span className="text-xs font-semibold text-emerald-600 flex items-center gap-1"><CheckCircle className="h-3 w-3"/> Resolved</span>;
       case 'Under Review': return <span className="text-xs font-semibold text-blue-600 flex items-center gap-1"><Activity className="h-3 w-3"/> Reviewing</span>;
-      case 'Needs Review':
-      case 'Submitted': return <span className="text-xs font-semibold text-amber-600 flex items-center gap-1"><Clock className="h-3 w-3"/> Pending</span>;
+      case 'pending': return <span className="text-xs font-semibold text-amber-600 flex items-center gap-1"><Clock className="h-3 w-3"/> Pending</span>;
       default: return <span className="text-xs font-semibold text-slate-500">{status}</span>;
     }
   };

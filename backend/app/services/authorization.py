@@ -62,11 +62,11 @@ class Operation(str, enum.Enum):
     LIST = "list"
     MARK_READ = "mark_read"
     UPDATE_STATUS = "update_status"
-    # Admin Operations
     MANAGE_STAFF = "manage_staff"
     VIEW_AUDIT = "view_audit"
     MANAGE_USERS = "manage_users"
     VIEW_DASHBOARD = "view_dashboard"
+    MANAGE_ORGANIZATIONS = "manage_organizations"
 
 
 # ---------------------------------------------------------------------------
@@ -152,7 +152,6 @@ class AuthorizationContext:
     purpose: Optional[str] = None
     consent_state_id: Optional[int] = None
     policy_version: Optional[str] = None
-    enforcement_state_id: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -241,11 +240,10 @@ class AuthorizationService:
                 consent_svc = ConsentService(self._db)
                 consent_decision = consent_svc.evaluate(
                     ctx=ctx,
-                    purpose=ctx.purpose,
-                    enforcement_state_id=ctx.enforcement_state_id
+                    purpose=ctx.purpose
                 )
                 if not consent_decision.allowed:
-                    return consent_decision
+                    result = consent_decision
 
         except Exception as e:
             # Never allow on error — fail closed
@@ -267,8 +265,6 @@ class AuthorizationService:
             consent_id = None
             if hasattr(ctx, "relationship_context") and ctx.relationship_context:
                 consent_id = getattr(ctx.relationship_context, "consent_id", None)
-                if not consent_id and isinstance(ctx.relationship_context, int):
-                    consent_id = ctx.relationship_context
             
             log = AuditLog(
                 actor_id=ctx.actor.id,
@@ -281,7 +277,6 @@ class AuthorizationService:
                 purpose=ctx.purpose,
                 consent_id=consent_id,
                 consent_state_id=ctx.consent_state_id,
-                enforcement_state=str(ctx.enforcement_state_id) if ctx.enforcement_state_id else None,
                 decision="ALLOW" if decision.allowed else "DENY",
                 denial_reason=decision.reason.value if decision.reason else None,
                 metadata_json=f'{{"detail": "{decision.detail}"}}' if decision.detail else None
@@ -485,7 +480,7 @@ class AuthorizationService:
                     membership = self._get_active_membership(actor.id, ctx.hospital_id)
                     if membership:
                         return AuthorizationDecision.allow()
-                if ctx.enforcement_state_id:
+                if ctx.relationship_context:
                     return AuthorizationDecision.allow()
                 return AuthorizationDecision.deny(DenialReason.ORGANIZATION_MISMATCH, "Not authorized: no membership or active grant context")
             return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
@@ -546,7 +541,7 @@ class AuthorizationService:
                 return AuthorizationDecision.deny(DenialReason.RESOURCE_NOT_OWNED, "Cannot export other patient records")
             return AuthorizationDecision.allow()
         if actor.role == "doctor":
-            if ctx.enforcement_state_id:
+            if ctx.relationship_context:
                 return AuthorizationDecision.allow()
             if self._has_visit_relationship(ctx.patient_id, actor.id):
                 return AuthorizationDecision.allow()
@@ -782,14 +777,17 @@ class AuthorizationService:
         op = ctx.operation
 
         if op in (Operation.CREATE, Operation.LIST):
-            if not ctx.patient_id:
-                return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "patient_id required for message auth")
+            # For messages, relationship_context contains the OTHER user ID
+            other_user_id = ctx.relationship_context
+            if not other_user_id:
+                return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Other user ID required in relationship_context")
+
             # Determine patient/doctor IDs based on actor role
             if actor.role == "patient":
                 patient_id = actor.id
-                doctor_id = ctx.patient_id  # receiver is doctor
+                doctor_id = other_user_id
             elif actor.role == "doctor":
-                patient_id = ctx.patient_id  # receiver is patient
+                patient_id = other_user_id
                 doctor_id = actor.id
             else:
                 return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
@@ -805,9 +803,24 @@ class AuthorizationService:
     # ------------------------------------------------------------------
 
     def _authorize_hospital(self, ctx: AuthorizationContext) -> AuthorizationDecision:
-        # Listing/reading hospital info is allowed for any authenticated active user
-        if ctx.operation in (Operation.LIST, Operation.READ):
+        actor = ctx.actor
+        op = ctx.operation
+
+        if actor.role == "platform_admin":
             return AuthorizationDecision.allow()
+
+        # Listing/reading hospital info is allowed for any authenticated active user
+        if op in (Operation.LIST, Operation.READ):
+            return AuthorizationDecision.allow()
+            
+        if op == Operation.UPDATE:
+            if not ctx.hospital_id:
+                return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Missing hospital_id")
+            membership = self._get_active_membership(actor.id, ctx.hospital_id)
+            if membership and membership.role == "admin":
+                return AuthorizationDecision.allow()
+            return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "Only organization administrators can update hospital details")
+
         return AuthorizationDecision.default_deny()
 
     # ------------------------------------------------------------------

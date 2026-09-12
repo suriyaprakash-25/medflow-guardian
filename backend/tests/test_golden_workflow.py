@@ -134,13 +134,13 @@ def setup_consent_chain(db, patient_id, doctor_id, hosp_id, doc_id, purpose="TRE
 # ===========================================================================
 
 @patch("app.services.storage.StorageService.download_document")
-def test_golden_workflow_stale_enforcement_denial(mock_storage, db_session):
+def test_golden_workflow_revocation_denial(mock_storage, db_session):
     """
-    Demonstrates Stale Enforcement State Denial.
+    Demonstrates Revocation Denial.
     1. Valid Consent exists.
-    2. Consent is REVOKED (creating a new authoritative state).
-    3. Doctor requests with old enforcement state.
-    EXPECTED: DENY (ENFORCEMENT_STATE_STALE), NO STORAGE ACCESS.
+    2. Consent is REVOKED.
+    3. Doctor requests document.
+    EXPECTED: DENY (OPERATION_NOT_ALLOWED), NO STORAGE ACCESS.
     """
     hosp, patient, doctor, doc = create_fixture_data(db_session)
     consent, policy, state1, grant = setup_consent_chain(db_session, patient.id, doctor.id, hosp.id, doc.id)
@@ -149,8 +149,7 @@ def test_golden_workflow_stale_enforcement_denial(mock_storage, db_session):
     # Let's say Doctor attempts download with this correct state
     mock_storage.return_value = b"file data"
     resp_valid = client.get(
-        f"/api/documents/{doc.id}/download?purpose=TREATMENT&enforcement_state_id={state1.id}",
-        headers=auth(doctor.email)
+        f"/api/documents/{doc.id}/download?purpose=TREATMENT", headers=auth(doctor.email)
     )
     assert resp_valid.status_code == 200, resp_valid.text
     assert mock_storage.called
@@ -162,15 +161,14 @@ def test_golden_workflow_stale_enforcement_denial(mock_storage, db_session):
     db_session.add(state2)
     db_session.flush()
 
-    # 3. Doctor tries to download with STALE state1 (e.g. they cached it)
+    # 3. Doctor tries to download again
     resp_stale = client.get(
-        f"/api/documents/{doc.id}/download?purpose=TREATMENT&enforcement_state_id={state1.id}",
-        headers=auth(doctor.email)
+        f"/api/documents/{doc.id}/download?purpose=TREATMENT", headers=auth(doctor.email)
     )
     
-    # Assert HTTP 403 and Stale State reason
+    # Assert HTTP 403 and Revoked reason
     assert resp_stale.status_code == 403, resp_stale.text
-    assert "ENFORCEMENT_STATE_STALE" in resp_stale.json()["detail"]
+    assert "OPERATION_NOT_ALLOWED" in resp_stale.text or "revoked" in resp_stale.text.lower()
     # CRITICAL: Prove Storage was NEVER accessed
     assert not mock_storage.called
 
@@ -192,8 +190,7 @@ def test_golden_workflow_revoked_consent_denial(mock_storage, db_session):
 
     # Doctor tries to download with SYNCHRONIZED state2
     resp_revoked = client.get(
-        f"/api/documents/{doc.id}/download?purpose=TREATMENT&enforcement_state_id={state2.id}",
-        headers=auth(doctor.email)
+        f"/api/documents/{doc.id}/download?purpose=TREATMENT", headers=auth(doctor.email)
     )
     
     assert resp_revoked.status_code == 403, resp_revoked.text
@@ -212,8 +209,7 @@ def test_golden_workflow_wrong_purpose_denial(mock_storage, db_session):
 
     # Doctor tries to download with BILLING purpose
     resp_purpose = client.get(
-        f"/api/documents/{doc.id}/download?purpose=BILLING&enforcement_state_id={state1.id}",
-        headers=auth(doctor.email)
+        f"/api/documents/{doc.id}/download?purpose=BILLING", headers=auth(doctor.email)
     )
     
     assert resp_purpose.status_code == 403, resp_purpose.text

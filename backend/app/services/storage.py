@@ -6,10 +6,16 @@ from app.core.config import settings
 
 class StorageService:
     def __init__(self):
-        if not settings.SUPABASE_URL or not settings.SUPABASE_KEY:
-            raise Exception("Supabase is not properly configured. Cannot initialize StorageService.")
-        self.supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
-        self.bucket = settings.SUPABASE_BUCKET
+        self.use_local = not settings.SUPABASE_URL or not settings.SUPABASE_KEY or "placeholder" in settings.SUPABASE_KEY
+        if self.use_local:
+            if getattr(settings, "ENV", "development") == "production":
+                raise Exception("CRITICAL SECURITY ERROR: Missing Supabase credentials in production! Local fallback is forbidden for medical documents.")
+            print("WARNING: Using local file storage. Supabase key is placeholder or missing.")
+            self.local_dir = os.path.join(os.getcwd(), "local_storage")
+            os.makedirs(self.local_dir, exist_ok=True)
+        else:
+            self.supabase: Client = create_client(settings.SUPABASE_URL, settings.SUPABASE_KEY)
+            self.bucket = settings.SUPABASE_BUCKET
 
     def upload_document(self, file: UploadFile, patient_id: int) -> str:
         """
@@ -18,7 +24,7 @@ class StorageService:
         """
         # Validate extensions
         file_ext = os.path.splitext(file.filename)[1].lower()
-        if file_ext not in [".pdf", ".jpg", ".jpeg", ".png", ".txt"]:
+        if file_ext not in [".pdf", ".jpg", ".jpeg", ".png", ".txt", ".docx", ".doc"]:
             raise HTTPException(status_code=400, detail="Invalid file extension")
         
         safe_filename = f"{uuid.uuid4().hex}{file_ext}"
@@ -27,6 +33,13 @@ class StorageService:
         file.file.seek(0)
         file_bytes = file.file.read()
         
+        if self.use_local:
+            local_path = os.path.join(self.local_dir, storage_path.replace("/", os.sep))
+            os.makedirs(os.path.dirname(local_path), exist_ok=True)
+            with open(local_path, "wb") as f:
+                f.write(file_bytes)
+            return storage_path
+
         try:
             self.supabase.storage.from_(self.bucket).upload(
                 path=storage_path,
@@ -41,6 +54,13 @@ class StorageService:
         """
         Securely fetches file bytes from the private storage bucket.
         """
+        if self.use_local:
+            local_path = os.path.join(self.local_dir, storage_path.replace("/", os.sep))
+            if not os.path.exists(local_path):
+                raise HTTPException(status_code=404, detail="File not found in local storage")
+            with open(local_path, "rb") as f:
+                return f.read()
+
         try:
             return self.supabase.storage.from_(self.bucket).download(storage_path)
         except Exception as e:

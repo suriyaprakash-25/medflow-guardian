@@ -7,7 +7,7 @@ Entry point for the backend API server.
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, triage, websockets, monitoring, hospital, document, access, notification, audit, users, appointments, clinical, admin, visits, interoperability
+from app.api import auth, triage, websockets, monitoring, hospital, document, access, notification, audit, users, appointments, clinical, admin, visits, interoperability, consent
 from app.core.logging import log
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -80,6 +80,7 @@ app.include_router(visits.router, prefix="/api", tags=["visits"])
 app.include_router(clinical.router, prefix="/api/clinical", tags=["clinical"])
 app.include_router(interoperability.router, prefix="/api", tags=["interoperability"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(consent.router, prefix="/api", tags=["consent"])
 app.include_router(websockets.router, tags=["websockets"])
 
 @app.get("/health", tags=["health"])

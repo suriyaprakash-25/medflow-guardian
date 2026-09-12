@@ -36,6 +36,8 @@ export interface VitalReading {
 export interface OutletContextType {
   isAdmin: boolean;
   adminData: any;
+  currentUser: any;
+  setCurrentUser: (user: any) => void;
   
   requests: TriageRequest[];
   fetchQueue: () => Promise<void>;
@@ -211,12 +213,17 @@ export default function Layout() {
     
     // Fetch authoritative identity from backend
     axios.get('/api/auth/me', { headers }).then(res => {
+      if (res.data.system_role !== 'doctor' && res.data.role !== 'doctor' && res.data.system_role !== 'admin' && res.data.role !== 'admin') {
+        toast.error('Session mismatch: You are logged in with a non-doctor account. Please log in again.');
+        handleLogout();
+        return;
+      }
       setCurrentUser(res.data);
       const adminMembership = res.data.memberships?.find((m: any) => m.role === 'admin');
       setIsAdmin(!!adminMembership);
     }).catch(err => {
       console.error(err);
-      if (err.response?.status === 401) handleLogout();
+      if (err.response?.status === 401 || err.status === 401) handleLogout();
     });
     
     fetchQueue();
@@ -316,6 +323,7 @@ export default function Layout() {
   const updateStatus = async (id: number, newStatus: string) => {
     try {
       await axios.patch(`/api/triage/${id}/status`, { status: newStatus }, { headers });
+      toast.success(`Triage request marked as ${newStatus}`);
     } catch (error) {
       toast.error('Failed to update status.');
     }
@@ -330,8 +338,9 @@ export default function Layout() {
         content: chatInput
       }, { headers });
       setChatInput('');
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      toast.error(error.message || 'Failed to send message');
     }
   };
 
@@ -383,7 +392,14 @@ export default function Layout() {
 
   const handleRequestAccess = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedDocs.length === 0 || !reqHospitalId) return;
+    if (!reqHospitalId) {
+      toast.error('Please specify your Hospital ID.');
+      return;
+    }
+    if (selectedDocs.length === 0) {
+      toast.error('Please find and select at least one patient document.');
+      return;
+    }
     try {
       await axios.post('/api/access-requests', {
         patient_id: parseInt(reqPatientId),
@@ -435,6 +451,7 @@ export default function Layout() {
     try {
       await axios.post(`/api/notifications/read-all`, {}, { headers });
       fetchPhase4Data();
+      toast.success('All notifications marked as read');
     } catch (error) {
       console.error(error);
     }
@@ -443,7 +460,7 @@ export default function Layout() {
   const unreadCount = notifications.filter(n => !n.is_read).length;
 
   const contextValue: OutletContextType = {
-    isAdmin, adminData,
+    isAdmin, adminData, currentUser, setCurrentUser,
     requests, fetchQueue, updateStatus,
     activePatientId, setActivePatientId, doctorVisits,
     messages, chatInput, setChatInput, sendMessage,

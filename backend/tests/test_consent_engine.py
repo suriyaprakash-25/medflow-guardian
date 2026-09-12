@@ -51,31 +51,9 @@ def test_consent_service_allows_valid_request():
     )
 
     # Request matches authoritative state 43 and purpose TREATMENT
-    decision = svc.evaluate(ctx, purpose="TREATMENT", enforcement_state_id=43)
+    decision = svc.evaluate(ctx, purpose="TREATMENT")
     assert decision.allowed is True
 
-def test_consent_service_denies_stale_enforcement_state():
-    policy = MockPolicyVersion({"allowed_purposes": ["TREATMENT"], "allowed_operations": ["download"]})
-    # The authoritative state is 43
-    state = MockConsentState(state_id=43, status="active", policy=policy)
-    db = MockDB(state)
-    svc = ConsentService(db)
-
-    actor = User(id=2, role="doctor")
-    ctx = AuthorizationContext(
-        actor=actor,
-        operation=Operation.DOWNLOAD,
-        resource_type=ResourceType.DOCUMENT,
-        db=db,
-        patient_id=1,
-        relationship_context=MockRelationshipContext(consent_id=10)
-    )
-
-    # Doctor requests document with cached enforcement state 42
-    decision = svc.evaluate(ctx, purpose="TREATMENT", enforcement_state_id=42)
-    assert decision.allowed is False
-    assert decision.reason == DenialReason.INVALID_CONTEXT
-    assert "ENFORCEMENT_STATE_STALE" in decision.detail
 
 def test_consent_service_denies_revoked_consent():
     policy = MockPolicyVersion({"allowed_purposes": ["TREATMENT"], "allowed_operations": ["download"]})
@@ -94,7 +72,7 @@ def test_consent_service_denies_revoked_consent():
         relationship_context=MockRelationshipContext(consent_id=10)
     )
 
-    decision = svc.evaluate(ctx, purpose="TREATMENT", enforcement_state_id=44)
+    decision = svc.evaluate(ctx, purpose="TREATMENT")
     assert decision.allowed is False
     assert decision.reason == DenialReason.OPERATION_NOT_ALLOWED
     assert "revoked" in decision.detail
@@ -116,7 +94,7 @@ def test_consent_service_denies_invalid_purpose():
     )
 
     # Doctor requests with BILLING purpose
-    decision = svc.evaluate(ctx, purpose="BILLING", enforcement_state_id=43)
+    decision = svc.evaluate(ctx, purpose="BILLING")
     assert decision.allowed is False
     assert decision.reason == DenialReason.OPERATION_NOT_ALLOWED
     assert "PURPOSE_NOT_ALLOWED" in decision.detail

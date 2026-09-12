@@ -1,88 +1,90 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Shield, Lock, User, Loader2 } from 'lucide-react';
-import { toast } from 'react-hot-toast';
+import toast from 'react-hot-toast';
+import { ShieldCheck, Mail, Lock, ArrowRight, ShieldAlert } from 'lucide-react';
 
 export default function Login() {
-  const [email, setEmail] = useState('admin@medflow.local'); // Default for demo
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    
     try {
       const formData = new URLSearchParams();
       formData.append('username', email);
       formData.append('password', password);
 
-      const response = await api.post('/api/auth/login', formData);
-      localStorage.setItem('token', response.data.access_token);
+      const res = await api.post('/api/auth/login', formData);
       
-      const meResponse = await api.get('/api/auth/me');
-      const user = meResponse.data;
+      localStorage.setItem('token', res.data.access_token);
       
-      // Verify administrative access
-      const isPlatformAdmin = user.system_role === 'platform_admin';
-      const isOrgAdmin = user.memberships?.some((m: any) => m.role === 'admin');
+      // Get user details
+      const userRes = await api.get('/api/auth/me', {
+        headers: { Authorization: `Bearer ${res.data.access_token}` }
+      });
       
-      if (!isPlatformAdmin && !isOrgAdmin) {
-        throw new Error('Not authorized for admin portal');
-      }
-
-      localStorage.setItem('user', JSON.stringify(user));
+      localStorage.setItem('user', JSON.stringify(userRes.data));
+      toast.success('Secure session established');
       navigate('/dashboard');
-      toast.success('Successfully logged into Admin Portal');
-    } catch (error: any) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      toast.error(error.response?.data?.detail || error.message || 'Login failed');
+    } catch (err: any) {
+      toast.error(err.response?.data?.detail || 'Authentication failed');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <div className="h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <Shield className="h-10 w-10 text-white" />
+    <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8 relative overflow-hidden">
+      {/* Background decoration */}
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-blue-100 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-indigo-100 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+        <div className="flex justify-center mb-6">
+          <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-3 rounded-2xl shadow-lg shadow-blue-500/30">
+            <ShieldCheck className="h-10 w-10 text-white" />
           </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900">
-          MedFlow Admin
+        <h2 className="text-center text-3xl font-extrabold text-slate-900 tracking-tight">
+          MedFlow Guardian
         </h2>
-        <p className="mt-2 text-center text-sm text-slate-600">
-          Governance & Operations Portal
+        <p className="mt-2 text-center text-sm text-blue-600 font-semibold tracking-wide uppercase">
+          Central Administration Console
         </p>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10 border border-slate-200">
-          <form className="space-y-6" onSubmit={handleLogin}>
+      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
+        <div className="bg-white/80 backdrop-blur-xl py-8 px-4 shadow-xl shadow-slate-200/50 sm:rounded-2xl sm:px-10 border border-slate-200">
+          <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label className="block text-sm font-medium text-slate-700">Email address</label>
-              <div className="mt-1 relative rounded-md shadow-sm">
+              <label className="block text-sm font-medium text-slate-700">
+                Administrator Email
+              </label>
+              <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-slate-400" />
+                  <Mail className="h-5 w-5 text-slate-400" />
                 </div>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-slate-300 rounded-md py-2 border"
-                  placeholder="admin@example.com"
+                  className="block w-full !pl-10 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all sm:text-sm shadow-sm"
+                  placeholder="admin@demo.com"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700">Password</label>
-              <div className="mt-1 relative rounded-md shadow-sm">
+              <label className="block text-sm font-medium text-slate-700">
+                Master Password
+              </label>
+              <div className="mt-1 relative rounded-xl shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Lock className="h-5 w-5 text-slate-400" />
                 </div>
@@ -91,20 +93,53 @@ export default function Login() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="focus:ring-blue-500 focus:border-blue-500 block w-full pl-10 sm:text-sm border-slate-300 rounded-md py-2 border"
+                  className="block w-full !pl-10 pr-3 py-2.5 bg-white border border-slate-300 rounded-xl text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all sm:text-sm shadow-sm"
                   placeholder="••••••••"
                 />
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full flex justify-center py-2.5 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-colors"
-            >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : 'Sign in to Admin Portal'}
-            </button>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  className="h-4 w-4 bg-white border-slate-300 rounded text-blue-600 focus:ring-blue-500 focus:ring-offset-white"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-600 font-medium">
+                  Trust this device
+                </label>
+              </div>
+
+              <div className="text-sm">
+                <a href="#" className="font-semibold text-blue-600 hover:text-blue-500 transition-colors">
+                  Lost security token?
+                </a>
+              </div>
+            </div>
+
+            <div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex justify-center items-center gap-2 py-2.5 px-4 border border-transparent rounded-xl shadow-md shadow-blue-500/20 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                {loading ? (
+                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                ) : (
+                  <>
+                    Authenticate <ArrowRight className="h-4 w-4" />
+                  </>
+                )}
+              </button>
+            </div>
           </form>
+
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-slate-500 font-medium">
+            <ShieldAlert className="h-4 w-4 text-slate-400" />
+            <p>Protected by Central Authorization Engine v4.0</p>
+          </div>
         </div>
       </div>
     </div>
