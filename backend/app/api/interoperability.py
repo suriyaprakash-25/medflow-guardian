@@ -65,7 +65,10 @@ def _import_canonical_fhir_consent(
         )
     )
     if not decision.allowed:
-        db.rollback()
+        # AuthorizationService flushed a DENY audit row into this otherwise
+        # read-only transaction. Commit that audit decision; do not roll the
+        # session back and erase both the audit evidence and test/request state.
+        db.commit()
         raise HTTPException(status_code=403, detail=_denial_detail(decision))
 
     try:
