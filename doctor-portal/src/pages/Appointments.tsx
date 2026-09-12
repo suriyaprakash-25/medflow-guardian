@@ -1,32 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api as axios } from '../lib/api';
 import { Calendar, Clock, MapPin, User as UserIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
+
+interface Appointment {
+  id: number;
+  patient_id: number;
+  hospital_id: number;
+  scheduled_time: string;
+  status: string;
+  reason?: string | null;
+}
 
 export default function Appointments() {
   const { currentUser } = useDoctorContext();
-  const [appointments, setAppointments] = useState<any[]>([]);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchAppointments = async () => {
-    if (!currentUser?.id) return;
+  const fetchAppointments = useCallback(async () => {
+    if (!currentUser?.id) {
+      setLoading(false);
+      return;
+    }
     try {
-      const token = localStorage.getItem('token');
-      const res = await axios.get(`/api/appointments/doctor/${currentUser.id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await axios.get(`/api/appointments/doctor/${currentUser.id}`);
       setAppointments(res.data);
-    } catch (error) {
+    } catch {
       toast.error('Failed to load appointments');
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentUser?.id]);
 
   useEffect(() => {
-    fetchAppointments();
-  }, [currentUser?.id]);
+    queueMicrotask(() => {
+      void fetchAppointments();
+    });
+  }, [fetchAppointments]);
 
   if (loading) return <div className="p-8 text-center text-slate-500">Loading appointments...</div>;
 
