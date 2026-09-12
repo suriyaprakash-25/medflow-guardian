@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import get_password_hash
 from app.models.access import DocumentAccessGrant, DocumentAccessRequest
+from app.models.consent import Consent, ConsentPolicyVersion, ConsentState
 from app.models.document import MedicalDocument
 from app.models.hospital import Hospital, Visit
 from app.models.user import User
@@ -92,12 +93,41 @@ def test_active_grant_resolution_checks_every_candidate(db_session: Session):
     db_session.add_all([unrelated_request, target_request])
     db_session.flush()
 
+    consent = Consent(
+        patient_id=patient.id,
+        doctor_id=doctor.id,
+        hospital_id=hospital.id,
+        status="active",
+    )
+    db_session.add(consent)
+    db_session.flush()
+    policy = ConsentPolicyVersion(
+        consent_id=consent.id,
+        version_number=1,
+        policy_payload={
+            "allowed_purposes": ["treatment"],
+            "allowed_operations": ["read", "download"],
+        },
+        status="active",
+    )
+    db_session.add(policy)
+    db_session.flush()
+    db_session.add(
+        ConsentState(
+            consent_id=consent.id,
+            policy_version_id=policy.id,
+            status="active",
+        )
+    )
+    db_session.flush()
+
     now = datetime.now(timezone.utc)
     unrelated_grant = DocumentAccessGrant(
         access_request_id=unrelated_request.id,
         patient_id=patient.id,
         doctor_id=doctor.id,
         hospital_id=hospital.id,
+        consent_id=consent.id,
         status="active",
         granted_at=now,
         expires_at=now + timedelta(hours=2),
@@ -109,6 +139,7 @@ def test_active_grant_resolution_checks_every_candidate(db_session: Session):
         patient_id=patient.id,
         doctor_id=doctor.id,
         hospital_id=hospital.id,
+        consent_id=consent.id,
         status="active",
         granted_at=now - timedelta(minutes=1),
         expires_at=now + timedelta(hours=2),
