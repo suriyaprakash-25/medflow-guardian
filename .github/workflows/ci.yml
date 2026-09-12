@@ -94,6 +94,7 @@ jobs:
 
     - name: Install and Build ${{ matrix.app }}
       run: |
+        npm ci --prefix frontend-shared
         cd ${{ matrix.app }}
         npm ci
         npm run build
