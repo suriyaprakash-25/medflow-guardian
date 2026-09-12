@@ -6,7 +6,7 @@ from app.core.database import get_db
 from app.models.hospital import Appointment
 from app.models.user import User
 from app.schemas.clinical import AppointmentCreate, AppointmentResponse, AppointmentUpdate
-from app.api.dependencies import get_authorization_service, get_current_user
+from app.api.dependencies import get_authorization_service, get_current_user, get_patient_identity
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
 
 router = APIRouter()
@@ -49,21 +49,33 @@ def create_appointment(
 def get_patient_appointments(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_patient: User = Depends(get_patient_identity)
 ):
+    """Return appointment history only to the patient who owns it.
+
+    Practitioner appointment access has its own actor-scoped endpoint. Keeping
+    this route patient-only prevents an arbitrary patient ID from becoming an
+    authorization selector.
+    """
+    if patient_id != current_patient.id:
+        raise HTTPException(status_code=403, detail="Cannot access another patient's appointments")
+
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
-        actor=current_user,
+        actor=current_patient,
         operation=Operation.LIST,
         resource_type=ResourceType.APPOINTMENT,
         db=db,
-        patient_id=patient_id
+        patient_id=current_patient.id
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.reason)
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
 
-    return db.query(Appointment).filter(Appointment.patient_id == patient_id).order_by(Appointment.scheduled_time.desc()).all()
+    # Defense in depth: scope using the authenticated patient identity.
+    return db.query(Appointment).filter(
+        Appointment.patient_id == current_patient.id
+    ).order_by(Appointment.scheduled_time.desc()).all()
 
 @router.get("/appointments/patient", response_model=List[AppointmentResponse])
 def get_my_appointments(
