@@ -12,6 +12,7 @@ than ignored.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from itertools import combinations
 import re
 from typing import Any, Iterable
@@ -83,8 +84,8 @@ REFERENCE_PATTERN = re.compile(
 )
 FHIR_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-.]{1,64}$")
 
-# These fields materially narrow or alter authorization semantics, but the
-# current MedFlow policy model/ConsentService cannot enforce them losslessly.
+# These provision fields materially narrow or alter authorization semantics, but
+# the current MedFlow policy model/ConsentService cannot enforce them losslessly.
 UNSUPPORTED_PROVISION_FIELDS = {
     "period",
     "securityLabel",
@@ -93,6 +94,12 @@ UNSUPPORTED_PROVISION_FIELDS = {
     "dataPeriod",
     "data",
 }
+
+# Verification can affect whether an external consent should be relied upon.
+# Until MedFlow models that lifecycle explicitly, accepting it and discarding its
+# semantics would be unsafe. Provenance-only fields such as sourceReference are
+# not treated as authorization scope and may be ignored by this declared subset.
+UNSUPPORTED_TOP_LEVEL_POLICY_FIELDS = {"verification"}
 
 
 class FHIRConsentError(ValueError):
@@ -188,6 +195,18 @@ def _normalize_source_system(value: Any) -> str:
     return value.rstrip("/")
 
 
+def _parse_fhir_instant(value: Any, field: str) -> datetime:
+    if not isinstance(value, str) or not value:
+        raise FHIRConsentError(f"{field} must be a FHIR instant string")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise FHIRConsentError(f"{field} must be a valid FHIR instant") from exc
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        raise FHIRConsentError(f"{field} must include a timezone offset")
+    return parsed
+
+
 def _validate_codeable_concept(value: Any, field: str) -> list[dict[str, Any]]:
     concept = _require_dict(value, field)
     codings = concept.get("coding")
@@ -240,9 +259,7 @@ def _validate_policy_reference(resource: dict[str, Any]) -> None:
             if not (isinstance(uri, str) and uri.strip()) and not (
                 isinstance(authority, str) and authority.strip()
             ):
-                raise FHIRConsentError(
-                    f"Consent.policy[{index}] must contain uri or authority"
-                )
+                raise FHIRConsentError(f"Consent.policy[{index}] must contain uri or authority")
     if policy_rule is not None:
         _validate_codeable_concept(policy_rule, "Consent.policyRule")
 
@@ -319,13 +336,27 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
     if fhir_status not in FHIR_STATUS_TO_MEDFLOW:
         raise FHIRConsentError(f"Unsupported Consent.status: {fhir_status!r}")
 
+    unsupported_top_level = sorted(
+        field
+        for field in UNSUPPORTED_TOP_LEVEL_POLICY_FIELDS
+        if resource.get(field) not in (None, [], {})
+    )
+    if unsupported_top_level:
+        raise FHIRConsentError(
+            "FHIR Consent contains lifecycle semantics that MedFlow cannot preserve safely: "
+            + ", ".join(unsupported_top_level)
+        )
+
     _require_supported_scope_and_category(resource)
     _validate_policy_reference(resource)
     patient_id = _parse_reference(resource.get("patient"), "Patient", "Consent.patient")
 
     provision = _require_dict(resource.get("provision"), "Consent.provision")
-    if provision.get("type", "permit") != "permit":
+    provision_type = provision.get("type")
+    if provision_type == "deny":
         raise FHIRConsentError("Deny provisions are not supported; import rejected fail-closed")
+    if provision_type != "permit":
+        raise FHIRConsentError("Consent.provision.type must explicitly be permit")
     if provision.get("provision"):
         raise FHIRConsentError("Nested provisions are not supported; import rejected fail-closed")
     unsupported = sorted(
@@ -346,9 +377,7 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
     )
     unknown_actions = sorted(set(action_codes) - FHIR_ACTION_TO_MEDFLOW.keys())
     if unknown_actions:
-        raise FHIRConsentError(
-            f"Unsupported consent action code(s): {', '.join(unknown_actions)}"
-        )
+        raise FHIRConsentError(f"Unsupported consent action code(s): {', '.join(unknown_actions)}")
     allowed_operations = sorted(
         {operation for code in action_codes for operation in FHIR_ACTION_TO_MEDFLOW[code]}
     )
@@ -360,12 +389,8 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
     )
     unknown_purposes = sorted(set(purpose_codes) - FHIR_PURPOSE_TO_MEDFLOW.keys())
     if unknown_purposes:
-        raise FHIRConsentError(
-            f"Unsupported purpose code(s): {', '.join(unknown_purposes)}"
-        )
-    allowed_purposes = sorted(
-        {FHIR_PURPOSE_TO_MEDFLOW[code] for code in purpose_codes}
-    )
+        raise FHIRConsentError(f"Unsupported purpose code(s): {', '.join(unknown_purposes)}")
+    allowed_purposes = sorted({FHIR_PURPOSE_TO_MEDFLOW[code] for code in purpose_codes})
 
     doctor_ids: set[int] = set()
     hospital_ids: set[int] = set()
@@ -374,10 +399,7 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
         raise FHIRConsentError("Consent.provision.actor must be an array")
     for index, actor in enumerate(actors):
         actor = _require_dict(actor, f"Consent.provision.actor[{index}]")
-        role_code = _actor_role_code(
-            actor.get("role"),
-            f"Consent.provision.actor[{index}].role",
-        )
+        role_code = _actor_role_code(actor.get("role"), f"Consent.provision.actor[{index}].role")
         reference = _require_dict(
             actor.get("reference"),
             f"Consent.provision.actor[{index}].reference",
@@ -390,9 +412,7 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
             )
         resource_type, raw_id = match.groups()
         if resource_type == "Practitioner" and role_code != "recipient":
-            raise FHIRConsentError(
-                "Practitioner consent actors must use the supported recipient role"
-            )
+            raise FHIRConsentError("Practitioner consent actors must use the supported recipient role")
         if resource_type == "Organization" and role_code not in {"custodian", "recipient"}:
             raise FHIRConsentError(
                 "Organization consent actors must use the supported custodian or recipient role"
@@ -411,8 +431,8 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
     if version_id is not None and (not isinstance(version_id, str) or len(version_id) > 255):
         raise FHIRConsentError("Consent.meta.versionId must be a string when present")
     last_updated = meta.get("lastUpdated")
-    if last_updated is not None and not isinstance(last_updated, str):
-        raise FHIRConsentError("Consent.meta.lastUpdated must be a string when present")
+    if last_updated is not None:
+        _parse_fhir_instant(last_updated, "Consent.meta.lastUpdated")
 
     policy_payload = {
         "allowed_purposes": allowed_purposes,
@@ -494,9 +514,7 @@ class FHIRConsentImporter:
         mapped = map_fhir_consent(resource, source_system)
         normalized_source = _normalize_source_system(source_system)
         if actor.role != "patient" or actor.id != mapped.patient_id:
-            raise FHIRConsentError(
-                "The authenticated patient does not match Consent.patient"
-            )
+            raise FHIRConsentError("The authenticated patient does not match Consent.patient")
 
         self._validate_internal_scope(mapped)
 
@@ -504,9 +522,7 @@ class FHIRConsentImporter:
         # Serialize the short lookup/version-write transaction by external ID.
         if self._db.get_bind().dialect.name == "postgresql":
             lock_key = f"fhir-consent:{normalized_source}:{mapped.source_resource_id}"
-            self._db.execute(
-                select(func.pg_advisory_xact_lock(func.hashtext(lock_key)))
-            )
+            self._db.execute(select(func.pg_advisory_xact_lock(func.hashtext(lock_key))))
 
         consent = self._db.query(Consent).filter(
             Consent.source_system == normalized_source,
@@ -544,26 +560,19 @@ class FHIRConsentImporter:
             if previous_policy and previous_state:
                 previous_fhir = previous_policy.policy_payload.get("fhir", {})
                 incoming_fhir = mapped.policy_payload.get("fhir", {})
+                scope_changed = (
+                    consent.doctor_id != mapped.doctor_id
+                    or consent.hospital_id != mapped.hospital_id
+                )
+                content_changed = (
+                    previous_policy.policy_payload != mapped.policy_payload
+                    or previous_state.status != mapped.status
+                    or scope_changed
+                )
                 previous_external_version = previous_fhir.get("version_id")
                 incoming_external_version = incoming_fhir.get("version_id")
-                if (
-                    previous_external_version is not None
-                    and incoming_external_version == previous_external_version
-                    and (
-                        previous_policy.policy_payload != mapped.policy_payload
-                        or previous_state.status != mapped.status
-                    )
-                ):
-                    raise FHIRConsentError(
-                        "Conflicting FHIR Consent content was supplied for an already imported meta.versionId"
-                    )
 
-                if (
-                    previous_policy.policy_payload == mapped.policy_payload
-                    and previous_state.status == mapped.status
-                    and consent.doctor_id == mapped.doctor_id
-                    and consent.hospital_id == mapped.hospital_id
-                ):
+                if not content_changed:
                     return FHIRConsentImportResult(
                         consent,
                         previous_policy,
@@ -571,9 +580,32 @@ class FHIRConsentImporter:
                         False,
                     )
 
-            latest_version = self._db.query(
-                ConsentPolicyVersion.version_number
-            ).filter(
+                if (
+                    previous_external_version is not None
+                    and incoming_external_version == previous_external_version
+                ):
+                    raise FHIRConsentError(
+                        "Conflicting FHIR Consent content was supplied for an already imported meta.versionId"
+                    )
+
+                previous_last_updated = previous_fhir.get("last_updated")
+                incoming_last_updated = incoming_fhir.get("last_updated")
+                if not previous_last_updated or not incoming_last_updated:
+                    raise FHIRConsentError(
+                        "Changed FHIR Consent updates require meta.lastUpdated on both the stored and incoming resource"
+                    )
+                if _parse_fhir_instant(
+                    incoming_last_updated,
+                    "Consent.meta.lastUpdated",
+                ) <= _parse_fhir_instant(
+                    previous_last_updated,
+                    "stored Consent.meta.lastUpdated",
+                ):
+                    raise FHIRConsentError(
+                        "Stale or replayed FHIR Consent update rejected by meta.lastUpdated ordering"
+                    )
+
+            latest_version = self._db.query(ConsentPolicyVersion.version_number).filter(
                 ConsentPolicyVersion.consent_id == consent.id
             ).order_by(ConsentPolicyVersion.version_number.desc()).scalar()
             next_version = (latest_version or 0) + 1
