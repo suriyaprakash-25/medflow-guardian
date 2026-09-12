@@ -1,62 +1,108 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
-from typing import List
+from typing import Dict, List, Set
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+
+from app.api.dependencies import (
+    get_authorization_service,
+    get_current_user,
+    get_patient_identity,
+)
 from app.core.database import get_db
 from app.models.hospital import Appointment
 from app.models.user import User
-from app.schemas.clinical import AppointmentCreate, AppointmentResponse, AppointmentUpdate
-from app.api.dependencies import get_authorization_service, get_current_user, get_patient_identity
-from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
+from app.schemas.clinical import (
+    AppointmentCreate,
+    AppointmentResponse,
+    AppointmentStatus,
+    AppointmentUpdate,
+)
+from app.services.authorization import (
+    AuthorizationContext,
+    AuthorizationService,
+    Operation,
+    ResourceType,
+)
 
 router = APIRouter()
+
+_PATIENT_TRANSITIONS: Dict[str, Set[str]] = {
+    AppointmentStatus.SCHEDULED.value: {AppointmentStatus.CANCELLED.value},
+    AppointmentStatus.CONFIRMED.value: {AppointmentStatus.CANCELLED.value},
+}
+
+_DOCTOR_TRANSITIONS: Dict[str, Set[str]] = {
+    AppointmentStatus.SCHEDULED.value: {
+        AppointmentStatus.CONFIRMED.value,
+        AppointmentStatus.CANCELLED.value,
+    },
+    AppointmentStatus.CONFIRMED.value: {
+        AppointmentStatus.COMPLETED.value,
+        AppointmentStatus.CANCELLED.value,
+    },
+}
+
+
+def _enforce_status_transition(*, actor_role: str, current_status: str, new_status: str) -> None:
+    if new_status == current_status:
+        return
+
+    transitions = (
+        _PATIENT_TRANSITIONS if actor_role == "patient" else _DOCTOR_TRANSITIONS
+        if actor_role == "doctor" else {}
+    )
+    if new_status not in transitions.get(current_status, set()):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Appointment transition '{current_status}' -> '{new_status}' "
+                f"is not permitted for role '{actor_role}'"
+            ),
+        )
+
 
 @router.post("/appointments", response_model=AppointmentResponse)
 def create_appointment(
     appointment_data: AppointmentCreate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     auth_svc = AuthorizationService(db)
-    # The CAE will ensure the patient is creating their own appointment
+    # The CAE ensures only a patient creates an appointment for themselves.
     ctx = AuthorizationContext(
         actor=current_user,
         operation=Operation.CREATE,
         resource_type=ResourceType.APPOINTMENT,
         db=db,
         hospital_id=appointment_data.hospital_id,
-        patient_id=current_user.id if current_user.role == "patient" else appointment_data.patient_id
+        patient_id=current_user.id if current_user.role == "patient" else None,
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.reason)
-        
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
+
     appointment = Appointment(
-        patient_id=ctx.patient_id,
+        patient_id=current_user.id,
         doctor_id=appointment_data.doctor_id,
         hospital_id=appointment_data.hospital_id,
         scheduled_time=appointment_data.scheduled_time,
         reason=appointment_data.reason,
         notes=appointment_data.notes,
-        status="scheduled"
+        status=AppointmentStatus.SCHEDULED.value,
     )
     db.add(appointment)
     db.commit()
     db.refresh(appointment)
     return appointment
 
+
 @router.get("/appointments/patient/{patient_id}", response_model=List[AppointmentResponse])
 def get_patient_appointments(
     patient_id: int,
     db: Session = Depends(get_db),
-    current_patient: User = Depends(get_patient_identity)
+    current_patient: User = Depends(get_patient_identity),
 ):
-    """Return appointment history only to the patient who owns it.
-
-    Practitioner appointment access has its own actor-scoped endpoint. Keeping
-    this route patient-only prevents an arbitrary patient ID from becoming an
-    authorization selector.
-    """
+    """Return appointment history only to the patient who owns it."""
     if patient_id != current_patient.id:
         raise HTTPException(status_code=403, detail="Cannot access another patient's appointments")
 
@@ -66,38 +112,44 @@ def get_patient_appointments(
         operation=Operation.LIST,
         resource_type=ResourceType.APPOINTMENT,
         db=db,
-        patient_id=current_patient.id
+        patient_id=current_patient.id,
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
         raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
 
-    # Defense in depth: scope using the authenticated patient identity.
-    return db.query(Appointment).filter(
-        Appointment.patient_id == current_patient.id
-    ).order_by(Appointment.scheduled_time.desc()).all()
+    return (
+        db.query(Appointment)
+        .filter(Appointment.patient_id == current_patient.id)
+        .order_by(Appointment.scheduled_time.desc())
+        .all()
+    )
+
 
 @router.get("/appointments/patient", response_model=List[AppointmentResponse])
 def get_my_appointments(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_patient: User = Depends(get_patient_identity),
 ):
-    if current_user.role != "patient":
-        raise HTTPException(status_code=403, detail="Not a patient")
-        
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
-        actor=current_user,
+        actor=current_patient,
         operation=Operation.LIST,
         resource_type=ResourceType.APPOINTMENT,
         db=db,
-        patient_id=current_user.id
+        patient_id=current_patient.id,
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.reason)
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
 
-    return db.query(Appointment).filter(Appointment.patient_id == current_user.id).order_by(Appointment.scheduled_time.desc()).all()
+    return (
+        db.query(Appointment)
+        .filter(Appointment.patient_id == current_patient.id)
+        .order_by(Appointment.scheduled_time.desc())
+        .all()
+    )
+
 
 @router.get("/appointments/doctor/{doctor_id}", response_model=List[AppointmentResponse])
 def get_doctor_appointments(
@@ -106,44 +158,72 @@ def get_doctor_appointments(
     current_user: User = Depends(get_current_user),
     auth_svc: AuthorizationService = Depends(get_authorization_service),
 ):
-    decision = auth_svc.authorize(AuthorizationContext(
-        actor=current_user, operation=Operation.LIST,
-        resource_type=ResourceType.APPOINTMENT, db=db,
-        relationship_context=doctor_id,
-    ))
+    decision = auth_svc.authorize(
+        AuthorizationContext(
+            actor=current_user,
+            operation=Operation.LIST,
+            resource_type=ResourceType.APPOINTMENT,
+            db=db,
+            relationship_context=doctor_id,
+        )
+    )
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.detail)
-    return db.query(Appointment).filter(Appointment.doctor_id == doctor_id).order_by(Appointment.scheduled_time.desc()).all()
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
+    return (
+        db.query(Appointment)
+        .filter(Appointment.doctor_id == current_user.id)
+        .order_by(Appointment.scheduled_time.desc())
+        .all()
+    )
+
 
 @router.patch("/appointments/{appointment_id}", response_model=AppointmentResponse)
 def update_appointment(
     appointment_id: int,
     update_data: AppointmentUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
         raise HTTPException(status_code=404, detail="Appointment not found")
-        
+
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
         actor=current_user,
         operation=Operation.UPDATE,
         resource_type=ResourceType.APPOINTMENT,
         db=db,
+        resource=appointment,
         patient_id=appointment.patient_id,
-        hospital_id=appointment.hospital_id
+        hospital_id=appointment.hospital_id,
+        # Scheduling/status management is operational workflow, not disclosure
+        # of patient content. The base CAE ownership/membership checks remain
+        # mandatory, but this operation does not require consent policy context.
+        requires_consent=False,
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:
-        raise HTTPException(status_code=403, detail=decision.reason)
-        
-    if update_data.status:
-        appointment.status = update_data.status
-    if update_data.notes and current_user.role == "doctor":
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
+
+    if current_user.role == "patient" and update_data.notes is not None:
+        raise HTTPException(
+            status_code=403,
+            detail="Patients cannot modify practitioner appointment notes",
+        )
+
+    if update_data.status is not None:
+        new_status = update_data.status.value
+        _enforce_status_transition(
+            actor_role=current_user.role,
+            current_status=appointment.status,
+            new_status=new_status,
+        )
+        appointment.status = new_status
+
+    if update_data.notes is not None and current_user.role == "doctor":
         appointment.notes = update_data.notes
-        
+
     db.commit()
     db.refresh(appointment)
     return appointment
