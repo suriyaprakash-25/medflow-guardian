@@ -6,7 +6,7 @@ class PatientReading(Base):
     __tablename__ = "patient_readings"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"))
+    patient_id = Column(Integer, ForeignKey("users.id"), index=True)
     heart_rate = Column(Integer)
     oxygen_level = Column(Integer)
     blood_pressure_sys = Column(Integer)
@@ -18,7 +18,7 @@ class Message(Base):
     __tablename__ = "messages"
 
     id = Column(Integer, primary_key=True, index=True)
-    sender_id = Column(Integer, ForeignKey("users.id"))
-    receiver_id = Column(Integer, ForeignKey("users.id"))
+    sender_id = Column(Integer, ForeignKey("users.id"), index=True)
+    receiver_id = Column(Integer, ForeignKey("users.id"), index=True)
     content = Column(String)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

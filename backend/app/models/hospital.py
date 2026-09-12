@@ -23,7 +23,7 @@ class HospitalStaff(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
     role = Column(String, default="doctor") # e.g., admin, doctor, staff
     is_active = Column(Boolean, default=True)
     joined_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -36,9 +36,9 @@ class Visit(Base):
     __tablename__ = "visits"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
-    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     
     date = Column(DateTime(timezone=True), server_default=func.now())
     status = Column(String, default="completed") # scheduled, active, completed, cancelled
@@ -52,9 +52,9 @@ class Appointment(Base):
     __tablename__ = "appointments"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
     
     scheduled_time = Column(DateTime(timezone=True), nullable=False)
     status = Column(String, default="scheduled") # scheduled, cancelled, completed

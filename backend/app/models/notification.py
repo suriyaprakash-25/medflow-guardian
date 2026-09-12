@@ -7,14 +7,14 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     type = Column(String, nullable=False)
     message = Column(String, nullable=False)
     
     is_read = Column(Boolean, default=False)
     
-    related_document_id = Column(Integer, ForeignKey("medical_documents.id"), nullable=True)
-    related_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=True)
+    related_document_id = Column(Integer, ForeignKey("medical_documents.id"), nullable=True, index=True)
+    related_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=True, index=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 

@@ -40,7 +40,7 @@ class PatientProfile(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id"), unique=True, nullable=False)
-    assigned_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    assigned_doctor_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     medical_history = Column(String, nullable=True)
     
     # New demographic & emergency fields

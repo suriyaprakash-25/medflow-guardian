@@ -1,10 +1,13 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import CheckConstraint, Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
+    __table_args__ = (
+        CheckConstraint("decision IN ('ALLOW', 'DENY')", name="ck_audit_logs_decision"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     
@@ -27,7 +30,7 @@ class AuditLog(Base):
     # Authorization & Consent Trace
     authorization_id = Column(String, nullable=True)
     consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True)
-    consent_state_id = Column(Integer, ForeignKey("consent_states.id"), nullable=True)
+    consent_state_id = Column(Integer, ForeignKey("consent_states.id"), nullable=True, index=True)
     policy_version = Column(Integer, nullable=True)
     
     # Enforcement

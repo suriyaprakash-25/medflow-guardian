@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Enum
+from sqlalchemy import CheckConstraint, Column, Integer, String, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -15,6 +15,9 @@ class DocumentType(str, enum.Enum):
 
 class MedicalDocument(Base):
     __tablename__ = "medical_documents"
+    __table_args__ = (
+        CheckConstraint("file_size >= 0", name="ck_medical_documents_file_size"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)

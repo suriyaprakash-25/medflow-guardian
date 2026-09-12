@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Table, Text
+from sqlalchemy import CheckConstraint, Column, Integer, String, DateTime, ForeignKey, Table, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -7,18 +7,24 @@ access_request_documents = Table(
     'access_request_documents',
     Base.metadata,
     Column('access_request_id', Integer, ForeignKey('document_access_requests.id'), primary_key=True),
-    Column('document_id', Integer, ForeignKey('medical_documents.id'), primary_key=True)
+    Column('document_id', Integer, ForeignKey('medical_documents.id'), primary_key=True, index=True)
 )
 
 access_grant_documents = Table(
     'access_grant_documents',
     Base.metadata,
     Column('access_grant_id', Integer, ForeignKey('document_access_grants.id'), primary_key=True),
-    Column('document_id', Integer, ForeignKey('medical_documents.id'), primary_key=True)
+    Column('document_id', Integer, ForeignKey('medical_documents.id'), primary_key=True, index=True)
 )
 
 class DocumentAccessRequest(Base):
     __tablename__ = "document_access_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired', 'revoked')",
+            name="ck_access_requests_status",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
@@ -43,13 +49,23 @@ class DocumentAccessRequest(Base):
 
 class DocumentAccessGrant(Base):
     __tablename__ = "document_access_grants"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('active', 'revoked', 'expired')",
+            name="ck_access_grants_status",
+        ),
+        CheckConstraint("consent_id IS NOT NULL", name="ck_access_grants_consent_required"),
+        CheckConstraint("expires_at > granted_at", name="ck_access_grants_expiry_after_grant"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     access_request_id = Column(Integer, ForeignKey("document_access_requests.id"), nullable=False, index=True)
     patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     doctor_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
-    consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True) # Phase 5: Nullable initially for migration, then should be strict
+    # Kept nullable at the physical column level for legacy-row remediation;
+    # the database check constraint rejects every new grant without consent.
+    consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True)
     
     status = Column(String, default="active") # active, revoked, expired
     

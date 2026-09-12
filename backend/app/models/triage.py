@@ -7,8 +7,8 @@ class TriageRequest(Base):
     __tablename__ = "triage_requests"
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False)
+    patient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    hospital_id = Column(Integer, ForeignKey("hospitals.id"), nullable=False, index=True)
     symptoms = Column(Text, nullable=False)
     status = Column(String, default="pending") # pending, reviewed, resolved
     priority = Column(String, nullable=True) # low, medium, high, critical

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint
+from sqlalchemy import CheckConstraint, Column, Integer, String, DateTime, ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 import enum
@@ -23,6 +23,14 @@ class Consent(Base):
             "source_system",
             "source_resource_id",
             name="uq_consents_source_system_resource_id",
+        ),
+        CheckConstraint(
+            "(source_system IS NULL) = (source_resource_id IS NULL)",
+            name="ck_consents_provenance_pair",
+        ),
+        CheckConstraint(
+            "status IN ('draft', 'active', 'suspended', 'revoked', 'expired', 'superseded', 'cancelled')",
+            name="ck_consents_status",
         ),
     )
 
@@ -61,6 +69,11 @@ class ConsentPolicyVersion(Base):
             "version_number",
             name="uq_consent_policy_versions_consent_version",
         ),
+        CheckConstraint("version_number > 0", name="ck_consent_policy_version_positive"),
+        CheckConstraint(
+            "status IN ('active', 'superseded')",
+            name="ck_consent_policy_versions_status",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -85,6 +98,12 @@ class ConsentState(Base):
     The most recent row for a given consent_id is its Authoritative Consent State.
     """
     __tablename__ = "consent_states"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'active', 'suspended', 'revoked', 'expired', 'superseded', 'cancelled')",
+            name="ck_consent_states_status",
+        ),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     consent_id = Column(Integer, ForeignKey("consents.id"), nullable=False, index=True)
