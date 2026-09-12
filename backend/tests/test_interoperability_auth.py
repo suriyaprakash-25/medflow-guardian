@@ -21,18 +21,8 @@ def clear_overrides():
     app.dependency_overrides.clear()
 
 
-def make_consent(
-    db_session,
-    patient_id,
-    doctor_id=None,
-    purposes=None,
-    operations=None,
-):
-    consent = Consent(
-        patient_id=patient_id,
-        doctor_id=doctor_id,
-        status=ConsentStatus.ACTIVE.value,
-    )
+def make_consent(db_session, patient_id, doctor_id=None, purposes=None, operations=None):
+    consent = Consent(patient_id=patient_id, doctor_id=doctor_id, status=ConsentStatus.ACTIVE.value)
     db_session.add(consent)
     db_session.flush()
     policy = ConsentPolicyVersion(
@@ -46,13 +36,7 @@ def make_consent(
     )
     db_session.add(policy)
     db_session.flush()
-    db_session.add(
-        ConsentState(
-            consent_id=consent.id,
-            policy_version_id=policy.id,
-            status=ConsentStatus.ACTIVE.value,
-        )
-    )
+    db_session.add(ConsentState(consent_id=consent.id, policy_version_id=policy.id, status=ConsentStatus.ACTIVE.value))
     db_session.commit()
     return consent
 
@@ -77,10 +61,7 @@ def test_patient_can_export_own_fhir(client, db_session):
     db_session.commit()
     override_user(patient)
     try:
-        response = client.get(
-            f"/api/interoperability/patients/{patient.id}/export",
-            params={"purpose": "SELF_ACCESS"},
-        )
+        response = client.get(f"/api/interoperability/patients/{patient.id}/export", params={"purpose": "SELF_ACCESS"})
         assert response.status_code == 200
         bundle = response.json()
         assert bundle["resourceType"] == "Bundle"
@@ -97,10 +78,7 @@ def test_provider_fhir_export_requires_consent_context(client, db_session):
     db_session.commit()
     override_user(doctor)
     try:
-        response = client.get(
-            f"/api/interoperability/patients/{patient.id}/export",
-            params={"purpose": "TREATMENT"},
-        )
+        response = client.get(f"/api/interoperability/patients/{patient.id}/export", params={"purpose": "TREATMENT"})
         assert response.status_code == 403
     finally:
         clear_overrides()
@@ -111,11 +89,8 @@ def test_provider_fhir_export_denies_visit_only_access_at_cae(db_session):
     patient = User(id=112, email="p112@example.com", hashed_password="hash", role="patient", full_name="Patient")
     db_session.add_all([doctor, patient])
     db_session.commit()
-
-    visit = Visit(patient_id=patient.id, doctor_id=doctor.id, hospital_id=1)
-    db_session.add(visit)
+    db_session.add(Visit(patient_id=patient.id, doctor_id=doctor.id, hospital_id=1))
     db_session.commit()
-
     decision = authorize_provider(db_session, doctor, patient.id, None)
     assert decision.allowed is False
     assert decision.reason.value == "consent_required"
@@ -129,12 +104,17 @@ def test_provider_fhir_export_accepts_matching_active_consent(client, db_session
     consent = make_consent(db_session, patient.id, doctor.id)
     override_user(doctor)
     try:
-        response = client.get(
-            f"/api/interoperability/patients/{patient.id}/export",
-            params={"purpose": "TREATMENT", "consent_id": consent.id},
-        )
+        response = client.get(f"/api/interoperability/patients/{patient.id}/export", params={"purpose": "TREATMENT", "consent_id": consent.id})
         assert response.status_code == 200
-        assert response.json()["resourceType"] == "Bundle"
+        bundle = response.json()
+        assert bundle["resourceType"] == "Bundle"
+        consent_resources = [entry["resource"] for entry in bundle["entry"] if entry["resource"]["resourceType"] == "Consent"]
+        assert len(consent_resources) == 1
+        exported_consent = consent_resources[0]
+        assert exported_consent["id"] == str(consent.id)
+        assert exported_consent["status"] == "active"
+        assert exported_consent["patient"]["reference"] == f"Patient/{patient.id}"
+        assert any(ext["valueInteger"] == 1 for ext in exported_consent["extension"] if "valueInteger" in ext)
     finally:
         clear_overrides()
 
@@ -148,10 +128,7 @@ def test_provider_fhir_export_denies_mismatched_consent(client, db_session):
     consent = make_consent(db_session, patient.id, other_doctor.id)
     override_user(doctor)
     try:
-        response = client.get(
-            f"/api/interoperability/patients/{patient.id}/export",
-            params={"purpose": "TREATMENT", "consent_id": consent.id},
-        )
+        response = client.get(f"/api/interoperability/patients/{patient.id}/export", params={"purpose": "TREATMENT", "consent_id": consent.id})
         assert response.status_code == 403
     finally:
         clear_overrides()
@@ -166,10 +143,7 @@ def test_provider_fhir_export_denies_wrong_patient(client, db_session):
     consent = make_consent(db_session, consent_patient.id, doctor.id)
     override_user(doctor)
     try:
-        response = client.get(
-            f"/api/interoperability/patients/{requested_patient.id}/export",
-            params={"purpose": "TREATMENT", "consent_id": consent.id},
-        )
+        response = client.get(f"/api/interoperability/patients/{requested_patient.id}/export", params={"purpose": "TREATMENT", "consent_id": consent.id})
         assert response.status_code == 403
     finally:
         clear_overrides()
@@ -181,7 +155,6 @@ def test_provider_fhir_export_denies_disallowed_purpose(db_session):
     db_session.add_all([doctor, patient])
     db_session.commit()
     consent = make_consent(db_session, patient.id, doctor.id, purposes=["TREATMENT"])
-
     decision = authorize_provider(db_session, doctor, patient.id, consent.id, purpose="RESEARCH")
     assert decision.allowed is False
     assert "PURPOSE_NOT_ALLOWED" in decision.detail
@@ -193,7 +166,6 @@ def test_provider_fhir_export_denies_disallowed_operation(db_session):
     db_session.add_all([doctor, patient])
     db_session.commit()
     consent = make_consent(db_session, patient.id, doctor.id, operations=["download"])
-
     decision = authorize_provider(db_session, doctor, patient.id, consent.id)
     assert decision.allowed is False
     assert "OPERATION_NOT_ALLOWED" in decision.detail
@@ -205,12 +177,10 @@ def test_provider_fhir_export_denies_revoked_consent(db_session):
     db_session.add_all([doctor, patient])
     db_session.commit()
     consent = make_consent(db_session, patient.id, doctor.id)
-
     state = db_session.query(ConsentState).filter(ConsentState.consent_id == consent.id).one()
     state.status = ConsentStatus.REVOKED.value
     consent.status = ConsentStatus.REVOKED.value
     db_session.commit()
-
     decision = authorize_provider(db_session, doctor, patient.id, consent.id)
     assert decision.allowed is False
     assert "currently revoked" in decision.detail
@@ -222,12 +192,10 @@ def test_provider_fhir_export_denies_suspended_consent(db_session):
     db_session.add_all([doctor, patient])
     db_session.commit()
     consent = make_consent(db_session, patient.id, doctor.id)
-
     state = db_session.query(ConsentState).filter(ConsentState.consent_id == consent.id).one()
     state.status = ConsentStatus.SUSPENDED.value
     consent.status = ConsentStatus.SUSPENDED.value
     db_session.commit()
-
     decision = authorize_provider(db_session, doctor, patient.id, consent.id)
     assert decision.allowed is False
     assert "currently suspended" in decision.detail
