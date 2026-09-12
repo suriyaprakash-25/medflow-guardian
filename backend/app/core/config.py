@@ -81,6 +81,22 @@ class Settings:
             "CRITICAL: production requires at least one explicit frontend CORS origin"
         )
 
+    # The Render-generated frontend and API hostnames are cross-origin and may
+    # also be cross-site. Production therefore uses a Secure SameSite=None
+    # refresh cookie, while cookie-authenticated endpoints separately validate
+    # the browser Origin against the exact CORS allowlist.
+    REFRESH_COOKIE_SAMESITE = os.getenv(
+        "REFRESH_COOKIE_SAMESITE",
+        "none" if ENV == "production" else "lax",
+    ).strip().lower()
+    if REFRESH_COOKIE_SAMESITE not in {"lax", "strict", "none"}:
+        raise ValueError(
+            "REFRESH_COOKIE_SAMESITE must be one of: lax, strict, none"
+        )
+    REFRESH_COOKIE_SECURE = ENV == "production"
+    if ENV == "production" and REFRESH_COOKIE_SAMESITE == "none" and not REFRESH_COOKIE_SECURE:
+        raise ValueError("SameSite=None refresh cookies must be Secure in production")
+
     # Proxy / rate-limit identity. Forwarded headers are ignored unless the
     # immediate peer belongs to one of these explicitly configured networks.
     TRUSTED_PROXY_CIDRS_RAW = os.getenv("TRUSTED_PROXY_CIDRS", "")
