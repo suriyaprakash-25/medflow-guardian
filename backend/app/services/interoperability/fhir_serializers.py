@@ -1,17 +1,34 @@
+from __future__ import annotations
+
+import base64
+from typing import Any, Dict, List
+
 from app.models.user import User
 from app.models.hospital import Hospital
 from app.models.clinical import Prescription, LabResult, ClinicalNote
 from app.models.document import MedicalDocument
 from app.models.consent import Consent, ConsentState, ConsentPolicyVersion
-from typing import List, Dict, Any, Optional
+from app.services.interoperability.fhir_consent import (
+    FHIR_ACTION_SYSTEM,
+    FHIR_CATEGORY_CODE,
+    FHIR_CATEGORY_SYSTEM,
+    FHIR_PURPOSE_SYSTEM,
+    FHIR_SCOPE_CODE,
+    FHIR_SCOPE_SYSTEM,
+    MEDFLOW_ACTOR_ROLE_SYSTEM,
+    MEDFLOW_POLICY_URI,
+    medflow_operations_to_fhir_actions,
+    medflow_purposes_to_fhir_codes,
+    medflow_status_to_fhir_status,
+)
 
 
 def to_fhir_patient(user: User) -> Dict[str, Any]:
-    """Serialize a User (Patient) to FHIR R4 Patient."""
-    resource = {
+    """Serialize a User (Patient) to the supported FHIR R4 Patient subset."""
+    resource: Dict[str, Any] = {
         "resourceType": "Patient",
         "id": str(user.id),
-        "active": user.is_active,
+        "active": bool(user.is_active),
         "name": [{"text": user.full_name or user.email}],
         "telecom": [{"system": "email", "value": user.email}],
     }
@@ -21,22 +38,22 @@ def to_fhir_patient(user: User) -> Dict[str, Any]:
 
 
 def to_fhir_practitioner(user: User) -> Dict[str, Any]:
-    """Serialize a User (Doctor) to FHIR R4 Practitioner."""
+    """Serialize a User (Doctor) to the supported FHIR R4 Practitioner subset."""
     return {
         "resourceType": "Practitioner",
         "id": str(user.id),
-        "active": user.is_active,
+        "active": bool(user.is_active),
         "name": [{"text": f"Dr. {user.full_name or user.email}"}],
         "telecom": [{"system": "email", "value": user.email}],
     }
 
 
 def to_fhir_organization(hospital: Hospital) -> Dict[str, Any]:
-    """Serialize a Hospital to FHIR R4 Organization."""
-    resource = {
+    """Serialize a Hospital to the supported FHIR R4 Organization subset."""
+    resource: Dict[str, Any] = {
         "resourceType": "Organization",
         "id": str(hospital.id),
-        "active": hospital.is_active,
+        "active": bool(hospital.is_active),
         "name": hospital.name,
     }
     if hospital.address:
@@ -46,47 +63,79 @@ def to_fhir_organization(hospital: Hospital) -> Dict[str, Any]:
     return resource
 
 
+def _actor(role_code: str, resource_type: str, resource_id: int) -> Dict[str, Any]:
+    return {
+        "role": {
+            "coding": [
+                {
+                    "system": MEDFLOW_ACTOR_ROLE_SYSTEM,
+                    "code": role_code,
+                }
+            ],
+            "text": role_code,
+        },
+        "reference": {"reference": f"{resource_type}/{resource_id}"},
+    }
+
+
 def to_fhir_consent(
     consent: Consent,
     state: ConsentState,
     policy: ConsentPolicyVersion,
 ) -> Dict[str, Any]:
-    """Serialize the authoritative MedFlow consent state as FHIR R4 Consent.
+    """Serialize authoritative MedFlow consent as the canonical FHIR R4 subset.
 
-    MedFlow policy values are retained in a vendor extension so importing systems
-    can round-trip the exact purpose/operation policy without inventing FHIR codes.
+    Export is fail-closed: purposes/operations that cannot be represented without
+    broadening authority raise ``FHIRConsentError`` in the shared semantic mapper.
     """
-    allowed_purposes = policy.policy_payload.get("allowed_purposes", [])
-    allowed_operations = policy.policy_payload.get("allowed_operations", [])
+    payload = policy.policy_payload or {}
+    allowed_purposes = payload.get("allowed_purposes", [])
+    allowed_operations = payload.get("allowed_operations", [])
+    purpose_codes = medflow_purposes_to_fhir_codes(allowed_purposes)
+    action_codes = medflow_operations_to_fhir_actions(allowed_operations)
 
-    provision: Dict[str, Any] = {}
-    purpose_codings = [
-        {"system": "https://medflowguardian.example/fhir/purpose", "code": str(value)}
-        for value in allowed_purposes
-    ]
-    if purpose_codings:
-        provision["purpose"] = purpose_codings
-
-    action_map = {
-        "READ": "access",
-        "DOWNLOAD": "disclose",
-        "CREATE": "access",
-        "UPDATE": "access",
-        "DELETE": "access",
+    provision: Dict[str, Any] = {
+        "type": "permit",
+        "purpose": [
+            {"system": FHIR_PURPOSE_SYSTEM, "code": code}
+            for code in purpose_codes
+        ],
+        "action": [
+            {
+                "coding": [
+                    {"system": FHIR_ACTION_SYSTEM, "code": action}
+                ]
+            }
+            for action in action_codes
+        ],
     }
-    actions = []
-    for operation in allowed_operations:
-        action = action_map.get(str(operation).upper())
-        if action and action not in actions:
-            actions.append(action)
-    if actions:
-        provision["action"] = [{"coding": [{"system": "http://terminology.hl7.org/CodeSystem/consentaction", "code": action}]} for action in actions]
 
-    resource: Dict[str, Any] = {
+    actors: List[Dict[str, Any]] = []
+    if consent.doctor_id is not None:
+        actors.append(_actor("recipient", "Practitioner", consent.doctor_id))
+    if consent.hospital_id is not None:
+        actors.append(_actor("custodian", "Organization", consent.hospital_id))
+    if actors:
+        provision["actor"] = actors
+
+    return {
         "resourceType": "Consent",
         "id": str(consent.id),
-        "status": state.status,
+        "status": medflow_status_to_fhir_status(state.status),
+        "scope": {
+            "coding": [
+                {"system": FHIR_SCOPE_SYSTEM, "code": FHIR_SCOPE_CODE}
+            ]
+        },
+        "category": [
+            {
+                "coding": [
+                    {"system": FHIR_CATEGORY_SYSTEM, "code": FHIR_CATEGORY_CODE}
+                ]
+            }
+        ],
         "patient": {"reference": f"Patient/{consent.patient_id}"},
+        "policy": [{"uri": MEDFLOW_POLICY_URI}],
         "provision": provision,
         "extension": [
             {
@@ -98,91 +147,132 @@ def to_fhir_consent(
                 "valueInteger": state.id,
             },
             {
-                "url": "https://medflowguardian.example/fhir/StructureDefinition/allowed-operations",
-                "valueString": ",".join(str(value) for value in allowed_operations),
+                "url": "https://medflowguardian.example/fhir/StructureDefinition/medflow-consent-status",
+                "valueCode": state.status,
             },
         ],
     }
-    if consent.doctor_id:
-        resource["performer"] = [{"reference": f"Practitioner/{consent.doctor_id}"}]
-    if consent.hospital_id:
-        resource["organization"] = [{"reference": f"Organization/{consent.hospital_id}"}]
-    return resource
 
 
 def to_fhir_medication_request(prescription: Prescription) -> Dict[str, Any]:
-    """Serialize a Prescription to FHIR R4 MedicationRequest."""
+    """Serialize a Prescription to the supported FHIR R4 MedicationRequest subset."""
     med_display = prescription.medication.name if prescription.medication else "Unknown Medication"
-    resource = {
+    resource: Dict[str, Any] = {
         "resourceType": "MedicationRequest",
         "id": str(prescription.id),
         "status": "active" if prescription.is_active else "completed",
         "intent": "order",
-        "medicationReference": {"display": med_display},
+        "medicationCodeableConcept": {"text": med_display},
         "subject": {"reference": f"Patient/{prescription.patient_id}"},
         "requester": {"reference": f"Practitioner/{prescription.doctor_id}"},
-        "dosageInstruction": [{"text": f"{prescription.dosage} {prescription.frequency}"}],
-        "authoredOn": prescription.created_at.isoformat() if prescription.created_at else None,
+        "dosageInstruction": [
+            {"text": f"{prescription.dosage} {prescription.frequency}"}
+        ],
     }
+    if prescription.created_at:
+        resource["authoredOn"] = prescription.created_at.isoformat()
     if prescription.start_date:
-        resource["dispenseRequest"] = {"validityPeriod": {"start": prescription.start_date.date().isoformat()}}
+        validity = {"start": prescription.start_date.isoformat()}
         if prescription.end_date:
-            resource["dispenseRequest"]["validityPeriod"]["end"] = prescription.end_date.date().isoformat()
+            validity["end"] = prescription.end_date.isoformat()
+        resource["dispenseRequest"] = {"validityPeriod": validity}
     return resource
 
 
 def to_fhir_observation(lab: LabResult) -> Dict[str, Any]:
-    """Serialize a LabResult to FHIR R4 Observation."""
-    resource = {
+    """Serialize a LabResult to the supported FHIR R4 Observation subset."""
+    status_map = {
+        "pending": "preliminary",
+        "completed": "final",
+        "cancelled": "cancelled",
+    }
+    resource: Dict[str, Any] = {
         "resourceType": "Observation",
         "id": str(lab.id),
-        "status": "final" if lab.status == "completed" else lab.status,
+        "status": status_map.get(lab.status, "unknown"),
         "code": {"text": lab.test_name},
         "subject": {"reference": f"Patient/{lab.patient_id}"},
         "performer": [{"reference": f"Practitioner/{lab.doctor_id}"}],
         "valueString": f"{lab.result_value}{(' ' + lab.unit) if lab.unit else ''}",
-        "referenceRange": [{"text": lab.reference_range}] if lab.reference_range else [],
     }
+    if lab.reference_range:
+        resource["referenceRange"] = [{"text": lab.reference_range}]
     if lab.test_date:
         resource["effectiveDateTime"] = lab.test_date.isoformat()
     return resource
 
 
 def to_fhir_document_reference_note(note: ClinicalNote) -> Dict[str, Any]:
-    """Serialize a ClinicalNote to FHIR R4 DocumentReference."""
-    return {
+    """Serialize a ClinicalNote as a FHIR R4 DocumentReference.
+
+    Attachment.data is base64Binary in FHIR. Raw clinical text must never be
+    placed directly in that field.
+    """
+    encoded_content = base64.b64encode(note.content.encode("utf-8")).decode("ascii")
+    resource: Dict[str, Any] = {
         "resourceType": "DocumentReference",
-        "id": str(note.id),
+        "id": f"clinical-note-{note.id}",
         "status": "current",
         "type": {"text": note.note_type or note.title},
         "description": note.title,
         "subject": {"reference": f"Patient/{note.patient_id}"},
         "author": [{"reference": f"Practitioner/{note.doctor_id}"}],
-        "date": note.created_at.isoformat() if note.created_at else None,
-        "content": [{"attachment": {"title": note.title, "data": note.content}}],
+        "content": [
+            {
+                "attachment": {
+                    "contentType": "text/plain; charset=utf-8",
+                    "title": note.title,
+                    "data": encoded_content,
+                }
+            }
+        ],
     }
+    if note.created_at:
+        resource["date"] = note.created_at.isoformat()
+    return resource
 
 
 def to_fhir_document_reference_file(doc: MedicalDocument) -> Dict[str, Any]:
-    """Serialize a MedicalDocument to FHIR R4 DocumentReference."""
-    return {
+    """Serialize protected document metadata without exposing storage internals.
+
+    The private Supabase object key is intentionally not exported as an
+    Attachment.url. Binary release must continue through MedFlow's authorized
+    download path rather than bypassing the PDP/PEP boundary.
+    """
+    attachment: Dict[str, Any] = {
+        "contentType": doc.mime_type,
+        "title": doc.original_filename,
+        "size": doc.file_size,
+        "extension": [
+            {
+                "url": "https://medflowguardian.example/fhir/StructureDefinition/protected-document-id",
+                "valueInteger": doc.id,
+            }
+        ],
+    }
+    resource: Dict[str, Any] = {
         "resourceType": "DocumentReference",
-        "id": str(doc.id),
+        "id": f"medical-document-{doc.id}",
         "status": "current" if doc.status == "active" else "superseded",
         "type": {"text": doc.document_type},
-        "description": doc.description,
         "subject": {"reference": f"Patient/{doc.patient_id}"},
-        "author": [{"reference": f"Practitioner/{doc.uploaded_by_doctor_id}"}],
-        "date": doc.created_at.isoformat() if doc.created_at else None,
-        "content": [{"attachment": {"url": doc.stored_filename, "title": doc.original_filename, "contentType": doc.mime_type}}],
+        "author": [
+            {"reference": f"Practitioner/{doc.uploaded_by_doctor_id}"}
+        ],
+        "content": [{"attachment": attachment}],
     }
+    if doc.title:
+        resource["description"] = doc.description or doc.title
+    if doc.created_at:
+        resource["date"] = doc.created_at.isoformat()
+    return resource
 
 
 def to_fhir_bundle(resources: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Wrap a list of FHIR resources in a FHIR R4 searchset Bundle."""
+    """Wrap exported resources in a FHIR R4 collection Bundle."""
     return {
         "resourceType": "Bundle",
-        "type": "searchset",
+        "type": "collection",
         "total": len(resources),
-        "entry": [{"resource": res} for res in resources],
+        "entry": [{"resource": resource} for resource in resources],
     }
