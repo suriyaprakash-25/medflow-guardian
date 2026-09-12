@@ -1,8 +1,12 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 
+// Keep all three frontends on one deployment contract. Render injects this
+// build-time value for production; local development still defaults to :8000.
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000',
+  baseURL: API_BASE_URL,
   withCredentials: true,
 });
 
@@ -20,7 +24,6 @@ api.interceptors.response.use(
     // Suppress repeated network errors or handle them gracefully
     if (!error.response) {
       if (error.code === 'ERR_NETWORK') {
-        // Prevent toast spamming by checking if one is already active (optional)
         toast.error('Network Error: Cannot connect to the server. Check your backend status.', { id: 'network-error' });
       }
       return Promise.reject(error);

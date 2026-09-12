@@ -1,56 +1,110 @@
-# MedFlow Guardian Production Infrastructure Definition
+# MedFlow Guardian production infrastructure definition.
+# Deployments wait for GitHub CI checks and migrations run in pre-deploy, not build.
 
 services:
   - type: web
     name: medflow-backend-prod
-    env: python
-    buildCommand: "cd backend && pip install -r requirements.txt && alembic upgrade head"
-    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-    healthCheckPath: "/ready"
+    runtime: python
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    preDeployCommand: "cd backend && alembic upgrade head"
+    startCommand: "cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers"
+    healthCheckPath: /ready
+    autoDeployTrigger: checksPass
+    maxShutdownDelaySeconds: 30
     envVars:
       - key: ENV
         value: production
+      - key: PYTHON_VERSION
+        value: "3.11.16"
       - key: DATABASE_URL
-        sync: false # Must be set in Render Dashboard
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false # Must be set in Render Dashboard
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: medical-documents
       - key: SECRET_KEY
         generateValue: true
       - key: ENCRYPTION_KEY
-        sync: false # Must be a Fernet key, set manually
+        sync: false
+      # Render static sites and the API have separate browser origins. Use a
+      # Secure SameSite=None refresh cookie and validate Origin on the backend.
+      - key: REFRESH_COOKIE_SAMESITE
+        value: none
+      # Configure this to only the actual reverse-proxy networks in front of the
+      # service. Leaving it empty is fail-safe: X-Forwarded-For is ignored.
+      - key: TRUSTED_PROXY_CIDRS
+        sync: false
+      # Explicit browser origins are derived from the static services so
+      # credentialed CORS never falls back to localhost or wildcard origins.
+      - key: PATIENT_APP_ORIGIN
+        fromService:
+          type: web
+          name: medflow-patient-app-prod
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: DOCTOR_PORTAL_ORIGIN
+        fromService:
+          type: web
+          name: medflow-doctor-portal-prod
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: ADMIN_PORTAL_ORIGIN
+        fromService:
+          type: web
+          name: medflow-admin-portal-prod
+          envVarKey: RENDER_EXTERNAL_URL
+      # Add comma-separated custom frontend domains here when production uses
+      # domains other than the Render-generated service URLs.
+      - key: FRONTEND_CORS_ORIGINS
+        sync: false
 
   - type: web
     name: medflow-patient-app-prod
-    env: static
-    buildCommand: "cd patient-app && npm install && npm run build"
-    staticPublishPath: "./patient-app/dist"
+    runtime: static
+    buildCommand: "cd patient-app && npm ci && npm run build"
+    staticPublishPath: ./patient-app/dist
+    autoDeployTrigger: checksPass
     envVars:
       - key: VITE_API_BASE_URL
         fromService:
-          name: medflow-backend-prod
           type: web
-          property: url
+          name: medflow-backend-prod
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
 
   - type: web
     name: medflow-doctor-portal-prod
-    env: static
-    buildCommand: "cd doctor-portal && npm install && npm run build"
-    staticPublishPath: "./doctor-portal/dist"
+    runtime: static
+    buildCommand: "cd doctor-portal && npm ci && npm run build"
+    staticPublishPath: ./doctor-portal/dist
+    autoDeployTrigger: checksPass
     envVars:
       - key: VITE_API_BASE_URL
         fromService:
-          name: medflow-backend-prod
           type: web
-          property: url
+          name: medflow-backend-prod
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
 
   - type: web
     name: medflow-admin-portal-prod
-    env: static
-    buildCommand: "cd admin-portal && npm install && npm run build"
-    staticPublishPath: "./admin-portal/dist"
+    runtime: static
+    buildCommand: "cd admin-portal && npm ci && npm run build"
+    staticPublishPath: ./admin-portal/dist
+    autoDeployTrigger: checksPass
     envVars:
       - key: VITE_API_BASE_URL
         fromService:
-          name: medflow-backend-prod
           type: web
-          property: url
+          name: medflow-backend-prod
+          envVarKey: RENDER_EXTERNAL_URL
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

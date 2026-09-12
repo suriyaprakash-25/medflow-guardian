@@ -139,6 +139,19 @@ jobs:
         docker logs clamav-r7 || true
         docker rm -f clamav-r7 || true
 
+    - name: Run R9 deployment configuration verification
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        pytest tests/test_r9_deployment_configuration.py tests/test_r9_frontend_deployment_contract.py -v
+
     - name: Run Backend Security & Integration Tests
       env:
         TESTING: "True"
