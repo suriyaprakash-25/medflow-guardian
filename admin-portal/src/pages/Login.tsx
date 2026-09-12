@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, clearAccessToken, setAccessToken } from '../lib/api';
 import toast from 'react-hot-toast';
 import { ShieldCheck, Mail, Lock, ArrowRight, ShieldAlert } from 'lucide-react';
 
@@ -14,7 +14,7 @@ export default function Login() {
 
   const completeAdminLogin = async (accessToken: string) => {
     const userRes = await api.get('/api/auth/me', {
-      headers: { Authorization: `Bearer ${accessToken}` }
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
     const user = userRes.data;
     const isPlatformAdmin = user.system_role === 'platform_admin';
@@ -22,12 +22,18 @@ export default function Login() {
       && user.memberships.some((membership: { role?: string }) => membership.role === 'admin');
 
     if (!isPlatformAdmin && !isOrgAdmin) {
-      localStorage.removeItem('token');
+      clearAccessToken();
       localStorage.removeItem('user');
+      try {
+        await api.post('/api/auth/logout');
+      } catch {
+        // The account is already being rejected locally; server revocation is
+        // best-effort here because no administrative page is rendered.
+      }
       throw new Error('This account does not have administrative access.');
     }
 
-    localStorage.setItem('token', accessToken);
+    setAccessToken(accessToken);
     localStorage.setItem('user', JSON.stringify(user));
     setPreAuthToken(null);
     toast.success('Secure session established');
@@ -64,7 +70,7 @@ export default function Login() {
       const res = await api.post(
         '/api/auth/mfa/verify',
         { code: mfaCode },
-        { headers: { Authorization: `Bearer ${preAuthToken}` } }
+        { headers: { Authorization: `Bearer ${preAuthToken}` } },
       );
       await completeAdminLogin(res.data.access_token);
     } catch (err: any) {
