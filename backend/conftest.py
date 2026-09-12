@@ -1,11 +1,14 @@
+import os
+
+# Configure test-only behavior before importing the application. Modules such
+# as the rate limiter read this flag at import time.
+os.environ["TESTING"] = "True"
+
 import pytest
 from sqlalchemy import event
 from app.core.database import SessionLocal, engine
 from app.main import app
 from app.core.database import get_db
-
-import os
-os.environ["TESTING"] = "True"
 
 @pytest.fixture(scope="session", autouse=True)
 def configure_postgres():

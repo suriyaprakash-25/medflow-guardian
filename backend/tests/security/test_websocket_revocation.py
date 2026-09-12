@@ -8,7 +8,6 @@ from app.models import User, Consent, ConsentState, ConsentPolicyVersion
 from app.models.consent import ConsentStatus
 
 # The tests will run sequentially within the test function.
-@pytest.mark.asyncio
 def test_websocket_revocation(db_session: Session):
     """
     Test:

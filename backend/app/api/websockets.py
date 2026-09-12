@@ -79,7 +79,18 @@ class ConnectionManager:
         patient_id = data.get("patient_id")
         
         # Admin or generic notifications don't need patient data access checks
-        if msg_type in ["notification_created", "access_request_created", "access_request_approved", "access_request_rejected", "access_revoked"]:
+        if msg_type in [
+            "notification_created",
+            "access_request_created",
+            "access_request_approved",
+            "access_request_rejected",
+            "access_revoked",
+            # Triage updates are dispatched only through the hospital-scoped
+            # broadcaster, which already filters active memberships. Treating
+            # them as patient-reading events here both duplicates policy and
+            # can silently drop a correctly scoped update.
+            "triage_update",
+        ]:
             return True
             
         if not patient_id:
