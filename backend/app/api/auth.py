@@ -17,7 +17,12 @@ from app.core.security import (
 from app.models.user import User
 from app.models.hospital import HospitalStaff, Hospital
 from app.models.auth import Session, RefreshTokenHistory, UserMFA
-from app.api.dependencies import get_current_active_user, get_current_user
+from app.api.dependencies import (
+    get_current_active_user,
+    get_current_user,
+    get_mfa_verification_context,
+    MFAVerificationContext,
+)
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -54,7 +59,7 @@ def set_refresh_cookie(response: Response, refresh_token: str):
         httponly=True,
         secure=settings.ENV == "production",
         samesite="lax",
-        max_age=7 * 24 * 60 * 60,
+        max_age=7 * 24 * 60 * 60, # 7 days
         path="/api/auth"
     )
 
@@ -128,9 +133,14 @@ def login(request: Request, response: Response, db: DBSession = Depends(get_db),
 
     mfa_record = db.query(UserMFA).filter(UserMFA.user_id == user.id, UserMFA.is_enabled == True).first()
     if mfa_record:
-        # This remains the legacy pre-auth representation on dev. R1 owns the
-        # explicit token-stage remediation and will be integrated separately.
-        pre_auth_token = create_access_token(subject=user.email, expires_delta=timedelta(minutes=2))
+        # A pre-auth token proves only the password stage. It is intentionally
+        # unusable on normal HTTP endpoints and WebSockets until MFA succeeds.
+        pre_auth_token = create_access_token(
+            subject=user.email,
+            expires_delta=timedelta(minutes=2),
+            token_type="preauth",
+            mfa_verified=False,
+        )
         return MFAResponse(
             mfa_required=True,
             access_token=pre_auth_token,
@@ -145,12 +155,21 @@ def login(request: Request, response: Response, db: DBSession = Depends(get_db),
 def verify_mfa(
     request: MFAVerifyRequest,
     response: Response,
-    current_user: User = Depends(get_current_active_user),
+    verification: MFAVerificationContext = Depends(get_mfa_verification_context),
     db: DBSession = Depends(get_db)
 ):
+    current_user = verification.user
     mfa_record = db.query(UserMFA).filter(UserMFA.user_id == current_user.id).first()
     if not mfa_record or not mfa_record.secret_encrypted:
         raise HTTPException(status_code=400, detail="MFA not configured")
+
+    # Enrollment verification must originate from a fully authenticated access
+    # token. Once MFA is enabled, login verification must originate from the
+    # short-lived password-stage pre-auth token instead.
+    if mfa_record.is_enabled and verification.token_type != "preauth":
+        raise HTTPException(status_code=401, detail="MFA challenge token required")
+    if not mfa_record.is_enabled and verification.token_type != "access":
+        raise HTTPException(status_code=401, detail="Authenticated access token required for MFA enrollment")
 
     secret = decrypt_mfa_secret(mfa_record.secret_encrypted)
     totp = pyotp.TOTP(secret)
