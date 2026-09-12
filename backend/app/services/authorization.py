@@ -153,7 +153,7 @@ class AuthorizationContext:
     purpose: Optional[str] = None
     consent_id: Optional[int] = None
     consent_state_id: Optional[int] = None
-    policy_version: Optional[str] = None
+    policy_version: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -266,7 +266,11 @@ class AuthorizationService:
             
             consent_id = ctx.consent_id
             if consent_id is None and ctx.relationship_context:
-                consent_id = getattr(ctx.relationship_context, "consent_id", None)
+                consent_id = (
+                    ctx.relationship_context
+                    if isinstance(ctx.relationship_context, int)
+                    else getattr(ctx.relationship_context, "consent_id", None)
+                )
             
             log = AuditLog(
                 actor_id=ctx.actor.id,
@@ -279,6 +283,7 @@ class AuthorizationService:
                 purpose=ctx.purpose,
                 consent_id=consent_id,
                 consent_state_id=ctx.consent_state_id,
+                policy_version=ctx.policy_version,
                 decision="ALLOW" if decision.allowed else "DENY",
                 denial_reason=decision.reason.value if decision.reason else None,
                 metadata_json=f'{{"detail": "{decision.detail}"}}' if decision.detail else None
@@ -815,11 +820,18 @@ class AuthorizationService:
                 return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "Only patients may submit readings")
             return AuthorizationDecision.allow()
 
-        if op == Operation.LIST:
+        if op in (Operation.READ, Operation.LIST):
             if actor.role == "patient":
+                if ctx.patient_id is not None and ctx.patient_id != actor.id:
+                    return AuthorizationDecision.deny(
+                        DenialReason.RESOURCE_NOT_OWNED, "Cannot read another patient's readings"
+                    )
                 return AuthorizationDecision.allow()
             if actor.role == "doctor":
-                # Caller must verify visit relationship separately
+                # An explicit consent context is sufficient for the base rule;
+                # ConsentService validates its bindings and policy afterward.
+                if ctx.relationship_context:
+                    return AuthorizationDecision.allow()
                 if ctx.patient_id:
                     has_rel = self._has_visit_relationship(ctx.patient_id, actor.id)
                     if not has_rel:

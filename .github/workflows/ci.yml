@@ -2,9 +2,9 @@ name: MedFlow Guardian CI/CD
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev ]
 
 jobs:
   backend-test:
@@ -39,13 +39,28 @@ jobs:
         pip install -r requirements.txt
         pip install pytest httpx
 
-    - name: Run Backend Security & Integration Tests
+    - name: Run Phase 4.1 FHIR Consent import verification
       env:
+        TESTING: "True"
+        ENV: test
         DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
         SECRET_KEY: test_secret_key_ci
         SUPABASE_URL: http://localhost:8000
-        SUPABASE_KEY: dummy_key
-        SUPABASE_BUCKET: medflow-bucket
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_interoperability_auth.py -v
+
+    - name: Run Backend Security & Integration Tests
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
         pytest tests/ -v

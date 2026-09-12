@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -11,6 +11,11 @@ class ConsentCreate(BaseModel):
 class ConsentTransition(BaseModel):
     target_status: str
     reason: Optional[str] = None
+
+class ConsentPolicyVersionCreate(BaseModel):
+    allowed_purposes: List[str]
+    allowed_operations: List[str]
+    reason: Optional[str] = Field(default=None, max_length=500)
 
 class ConsentStateResponse(BaseModel):
     id: int
@@ -32,6 +37,17 @@ class ConsentResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
     
+    class Config:
+        from_attributes = True
+
+class ConsentPolicyVersionResponse(BaseModel):
+    id: int
+    consent_id: int
+    version_number: int
+    policy_payload: Dict[str, Any]
+    status: str
+    created_at: datetime
+
     class Config:
         from_attributes = True
 

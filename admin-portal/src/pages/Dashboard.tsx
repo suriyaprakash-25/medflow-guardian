@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { Users, ShieldCheck, Activity, Database, AlertCircle, ArrowUpRight, ArrowDownRight, ActivitySquare } from 'lucide-react';
+import { Users, ShieldCheck, Activity, Database, AlertCircle, ArrowUpRight, ActivitySquare } from 'lucide-react';
 
 export default function Dashboard() {
   const [data, setData] = useState<any>(null);

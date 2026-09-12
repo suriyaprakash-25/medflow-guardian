@@ -15,6 +15,10 @@ from app.services.interoperability.fhir_consent import (
     FHIRConsentImporter,
     map_fhir_consent,
 )
+from app.services.interoperability.fhir_consent_import import (
+    FHIRConsentImportError,
+    import_fhir_consent as import_strict_fhir_consent,
+)
 
 from app.services.interoperability.fhir_serializers import (
     to_fhir_patient,
@@ -26,6 +30,76 @@ from app.services.interoperability.fhir_serializers import (
 )
 
 router = APIRouter()
+
+
+def _extract_import_patient_id(resource: Dict[str, Any]) -> int:
+    """Extract the subject identifier needed for pre-persistence authorization."""
+    if not isinstance(resource, dict) or resource.get("resourceType") != "Consent":
+        raise FHIRConsentImportError("resourceType must be 'Consent'")
+    patient = resource.get("patient")
+    if not isinstance(patient, dict):
+        raise FHIRConsentImportError("Consent.patient must be a FHIR Reference object")
+    reference = patient.get("reference")
+    if not isinstance(reference, str) or not reference.startswith("Patient/"):
+        raise FHIRConsentImportError("Consent.patient.reference must use Patient/<internal-id>")
+    parts = reference.split("/")
+    if len(parts) != 2:
+        raise FHIRConsentImportError("Consent.patient.reference must use Patient/<internal-id>")
+    try:
+        return int(parts[1])
+    except ValueError as exc:
+        raise FHIRConsentImportError(
+            "Consent.patient.reference must contain a numeric MedFlow identifier"
+        ) from exc
+
+
+@router.post("/interoperability/consents/import", status_code=201)
+def import_strict_patient_fhir_consent(
+    resource: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> Dict[str, Any]:
+    """Compatibility endpoint for the fail-closed FHIR R4 import profile."""
+    try:
+        patient_id = _extract_import_patient_id(resource)
+    except FHIRConsentImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    decision = AuthorizationService(db).authorize(AuthorizationContext(
+        actor=current_user,
+        operation=Operation.CREATE,
+        resource_type=ResourceType.CONSENT,
+        db=db,
+        patient_id=patient_id,
+        purpose="CONSENT_MANAGEMENT",
+    ))
+    if not decision.allowed:
+        raise HTTPException(status_code=403, detail=decision.detail or decision.reason)
+
+    try:
+        imported = import_strict_fhir_consent(db, resource)
+        db.commit()
+        db.refresh(imported.consent)
+        db.refresh(imported.policy_version)
+        db.refresh(imported.state)
+    except FHIRConsentImportError as exc:
+        # Validation and scope checks complete before the strict importer adds
+        # rows, so no transaction rollback is needed for this expected 422.
+        # This also preserves any outer transaction owned by a caller/test.
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception:
+        db.rollback()
+        raise
+
+    return {
+        "consent_id": imported.consent.id,
+        "policy_version_id": imported.policy_version.id,
+        "state_id": imported.state.id,
+        "status": imported.state.status,
+        "source_resource_id": imported.source_resource_id,
+        "allowed_purposes": imported.policy_version.policy_payload.get("allowed_purposes", []),
+        "allowed_operations": imported.policy_version.policy_payload.get("allowed_operations", []),
+    }
 
 
 @router.post("/interoperability/fhir/consents/import", response_model=FHIRConsentImportResponse)

@@ -52,7 +52,13 @@ def test_websocket_revocation(db_session: Session):
     # and TestClient doesn't easily support async websocket testing in this complex flow without specific setup,
     # we will test the underlying AuthorizationService logic used by websockets.py directly for the same effect.
     
-    from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
+    from app.services.authorization import (
+        AuthorizationService,
+        AuthorizationContext,
+        DenialReason,
+        Operation,
+        ResourceType,
+    )
     
     # 2. Consent = ACTIVE
     # Simulate a websocket message context
@@ -84,7 +90,7 @@ def test_websocket_revocation(db_session: Session):
         # 5/6. Same WS (or subsequent message) re-evaluates context. Expected: DENY
         decision2 = svc.authorize(ctx)
         assert decision2.allowed == False, "Revoked consent should block subsequent WS messages"
-        assert decision2.reason.value == "OPERATION_NOT_ALLOWED"
+        assert decision2.reason == DenialReason.OPERATION_NOT_ALLOWED
         
     finally:
         pass

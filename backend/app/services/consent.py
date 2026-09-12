@@ -1,6 +1,5 @@
-from typing import Optional, Any
+from typing import Optional
 from sqlalchemy.orm import Session
-from datetime import datetime
 
 from app.models.consent import Consent, ConsentState, ConsentStatus
 from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
@@ -66,14 +65,13 @@ class ConsentService:
             ctx.actor.role != "doctor" or consent.doctor_id != ctx.actor.id
         ):
             return AuthorizationDecision.deny(
-                DenialReason.INVALID_CONTEXT, "Consent is bound to another practitioner"
+                DenialReason.INVALID_CONTEXT, "Consent is bound to another doctor/practitioner"
             )
         if consent.hospital_id is not None and consent.hospital_id != ctx.hospital_id:
             return AuthorizationDecision.deny(
-                DenialReason.ORGANIZATION_MISMATCH,
-                "Consent is bound to another organization",
+                DenialReason.INVALID_CONTEXT,
+                "Consent is bound to another hospital/organization",
             )
-
         # 3. Load the Authoritative Consent State (the latest state row)
         authoritative_state = self._db.query(ConsentState).filter(
             ConsentState.consent_id == consent_id
@@ -83,6 +81,13 @@ class ConsentService:
             return AuthorizationDecision.deny(
                 DenialReason.INVALID_CONTEXT, "Consent state history is missing"
             )
+
+        # Populate the exact governance snapshot before any policy denial so
+        # both ALLOW and DENY audit rows remain explainable.
+        policy = authoritative_state.policy_version
+        ctx.consent_id = consent_id
+        ctx.consent_state_id = authoritative_state.id
+        ctx.policy_version = getattr(policy, "version_number", None)
 
         # 4. ENFORCEMENT STATE STALE-STATE RULE
         # Removed: Backend is a collocated PEP.
@@ -95,7 +100,6 @@ class ConsentService:
             )
 
         # 6. Load the active Policy Version
-        policy = authoritative_state.policy_version
         if not policy:
             return AuthorizationDecision.deny(DenialReason.INVALID_CONTEXT, "Policy version not found")
 

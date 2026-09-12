@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
-import { ShieldAlert, Database, Search, Filter, ShieldCheck, ShieldX, ChevronDown, User, Hash, Clock, FileJson } from 'lucide-react';
+import { ShieldAlert, Database, Search, Filter, ShieldCheck, ShieldX, ChevronDown, User, Hash, FileJson } from 'lucide-react';
 
 export default function Audit() {
   const [logs, setLogs] = useState<any[]>([]);

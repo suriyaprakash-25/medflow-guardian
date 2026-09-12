@@ -102,11 +102,15 @@ def export_context(db, doctor, patient, hospital, consent, **overrides):
 def test_doctor_fhir_export_requires_every_control():
     engine, db = make_database()
     try:
-        patient, doctor, hospital, consent, _ = seed_authorized_export(db)
+        patient, doctor, hospital, consent, policy = seed_authorized_export(db)
         decision = AuthorizationService(db).authorize(
             export_context(db, doctor, patient, hospital, consent)
         )
         assert decision.allowed is True
+        audit = db.query(AuditLog).order_by(AuditLog.id.desc()).first()
+        assert audit.consent_id == consent.id
+        assert audit.consent_state_id is not None
+        assert audit.policy_version == policy.version_number
     finally:
         db.close()
         engine.dispose()
