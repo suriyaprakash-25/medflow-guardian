@@ -70,6 +70,25 @@ def _post(path: str, payload: dict):
     )
 
 
+def test_canonical_and_deprecated_routes_share_idempotent_persistence(db_session):
+    patient = _patient(db_session, "fhir-route-unification@example.com")
+    payload = _payload(patient.id)
+
+    canonical = _post("/api/interoperability/fhir/consents/import", payload)
+    compatibility = _post("/api/interoperability/consents/import", payload)
+
+    assert canonical.status_code == 200
+    assert compatibility.status_code == 200
+    first = canonical.json()
+    second = compatibility.json()
+    assert first["created"] is True
+    assert second["created"] is False
+    assert second["consent_id"] == first["consent_id"]
+    assert second["policy_version_id"] == first["policy_version_id"]
+    assert second["state_id"] == first["state_id"]
+    assert db_session.query(Consent).filter(Consent.patient_id == patient.id).count() == 1
+
+
 def test_deprecated_alias_uses_same_canonical_fail_closed_mapper(db_session):
     patient = _patient(db_session, "fhir-alias-deny@example.com")
     payload = _payload(patient.id)
