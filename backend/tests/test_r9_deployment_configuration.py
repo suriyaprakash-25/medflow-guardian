@@ -2,8 +2,10 @@ from pathlib import Path
 
 import pytest
 import yaml
+from fastapi import HTTPException, Request, Response
 
-from app.core.config import _parse_cors_origins
+from app.api.auth import _enforce_cookie_request_origin, set_refresh_cookie
+from app.core.config import _parse_cors_origins, settings
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +22,26 @@ def _env_by_key(service):
         for entry in service.get("envVars", [])
         if "key" in entry
     }
+
+
+def _request(origin: str | None = None) -> Request:
+    headers = []
+    if origin is not None:
+        headers.append((b"origin", origin.encode("ascii")))
+    return Request(
+        {
+            "type": "http",
+            "http_version": "1.1",
+            "method": "POST",
+            "scheme": "https",
+            "path": "/api/auth/refresh",
+            "raw_path": b"/api/auth/refresh",
+            "query_string": b"",
+            "headers": headers,
+            "client": ("203.0.113.10", 12345),
+            "server": ("api.example.com", 443),
+        }
+    )
 
 
 def test_production_blueprint_gates_deploys_and_runs_migrations_predeploy():
@@ -43,6 +65,7 @@ def test_production_blueprint_gates_deploys_and_runs_migrations_predeploy():
     }:
         assert env[key]["sync"] is False
     assert env["SECRET_KEY"]["generateValue"] is True
+    assert env["REFRESH_COOKIE_SAMESITE"]["value"] == "none"
 
 
 def test_static_frontends_use_backend_url_and_spa_rewrite():
@@ -100,3 +123,34 @@ def test_cors_parser_rejects_wildcards_and_non_origin_urls():
 
     with pytest.raises(ValueError, match="Invalid CORS origin"):
         _parse_cors_origins(["patient.example.com"])
+
+
+def test_production_refresh_cookie_is_secure_and_cross_site_capable(monkeypatch):
+    monkeypatch.setattr(settings, "REFRESH_COOKIE_SECURE", True)
+    monkeypatch.setattr(settings, "REFRESH_COOKIE_SAMESITE", "none")
+    response = Response()
+
+    set_refresh_cookie(response, "opaque-refresh-token")
+
+    cookie = response.headers["set-cookie"].lower()
+    assert "httponly" in cookie
+    assert "secure" in cookie
+    assert "samesite=none" in cookie
+    assert "path=/api/auth" in cookie
+
+
+def test_production_cookie_auth_rejects_untrusted_browser_origin(monkeypatch):
+    monkeypatch.setattr(settings, "ENV", "production")
+    monkeypatch.setattr(
+        settings,
+        "FRONTEND_CORS_ORIGINS",
+        ["https://patient.example.com", "https://doctor.example.com"],
+    )
+
+    _enforce_cookie_request_origin(_request("https://patient.example.com"))
+    _enforce_cookie_request_origin(_request())
+
+    with pytest.raises(HTTPException) as exc:
+        _enforce_cookie_request_origin(_request("https://evil.example"))
+    assert exc.value.status_code == 403
+    assert exc.value.detail == "Untrusted request origin"
