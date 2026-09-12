@@ -6,6 +6,7 @@ from app.core.database import get_db
 from app.models.user import User
 from app.models.clinical import Prescription, LabResult, ClinicalNote
 from app.models.document import MedicalDocument
+from app.models.consent import Consent
 from app.api.dependencies import get_current_user
 from app.services.authorization import AuthorizationService, AuthorizationContext, Operation, ResourceType
 from app.schemas.consent import FHIRConsentImportResponse
@@ -79,7 +80,8 @@ def import_fhir_consent(
 @router.get("/interoperability/patients/{patient_id}/export")
 def export_patient_fhir_bundle(
     patient_id: int,
-    purpose: str = Query(...),
+    purpose: str = Query(..., min_length=1, max_length=64, pattern=r"^[A-Z][A-Z0-9_]*$"),
+    consent_id: Optional[int] = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> Dict[str, Any]:
@@ -87,6 +89,10 @@ def export_patient_fhir_bundle(
     Exports a patient's complete clinical record as a FHIR R4 Bundle.
     Protected by the Central Authorization Engine.
     """
+    consent = None
+    if current_user.role == "doctor" and consent_id is not None:
+        consent = db.query(Consent).filter(Consent.id == consent_id).first()
+
     auth_svc = AuthorizationService(db)
     ctx = AuthorizationContext(
         actor=current_user,
@@ -94,7 +100,10 @@ def export_patient_fhir_bundle(
         resource_type=ResourceType.FHIR_EXPORT,
         db=db,
         patient_id=patient_id,
-        purpose=purpose
+        hospital_id=consent.hospital_id if consent else None,
+        relationship_context=consent,
+        purpose=purpose,
+        consent_id=consent_id,
     )
     decision = auth_svc.authorize(ctx)
     if not decision.allowed:

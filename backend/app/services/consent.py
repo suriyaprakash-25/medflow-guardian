@@ -2,7 +2,7 @@ from typing import Optional, Any
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from app.models.consent import Consent, ConsentState, ConsentPolicyVersion, ConsentStatus
+from app.models.consent import Consent, ConsentState, ConsentStatus
 from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
 
 class ConsentService:
@@ -32,11 +32,12 @@ class ConsentService:
         if not ctx.patient_id:
             return AuthorizationDecision.allow()
 
-        # 2. Extract Consent relationship.
-        # This requires the CAE or route to pass the actual Consent ID via relationship_context or a new field.
-        # For document download, the doctor uses a DocumentAccessGrant.
-        # We assume `ctx.relationship_context` holds the DocumentAccessGrant or Consent ID.
-        consent_id = getattr(ctx.relationship_context, "consent_id", None)
+        # 2. Extract explicit consent context. New routes use ctx.consent_id;
+        # relationship_context remains supported for document grants and older
+        # enforcement points while they migrate to the explicit field.
+        consent_id = ctx.consent_id
+        if not consent_id:
+            consent_id = getattr(ctx.relationship_context, "consent_id", None)
         if not consent_id:
             # Try to see if relationship_context IS the consent_id
             if isinstance(ctx.relationship_context, int):
@@ -47,6 +48,30 @@ class ConsentService:
             return AuthorizationDecision.deny(
                 DenialReason.INVALID_CONTEXT, 
                 "No consent context provided for cross-role access"
+            )
+
+        # Bind the supplied consent to the exact patient, practitioner, and
+        # organization in the trusted authorization context before evaluating
+        # its policy. A valid consent ID for another subject must never work.
+        consent = self._db.query(Consent).filter(Consent.id == consent_id).first()
+        if not consent:
+            return AuthorizationDecision.deny(
+                DenialReason.CONSENT_REQUIRED, "Consent context was not found"
+            )
+        if consent.patient_id != ctx.patient_id:
+            return AuthorizationDecision.deny(
+                DenialReason.INVALID_CONTEXT, "Consent is bound to another patient"
+            )
+        if consent.doctor_id is not None and (
+            ctx.actor.role != "doctor" or consent.doctor_id != ctx.actor.id
+        ):
+            return AuthorizationDecision.deny(
+                DenialReason.INVALID_CONTEXT, "Consent is bound to another practitioner"
+            )
+        if consent.hospital_id is not None and consent.hospital_id != ctx.hospital_id:
+            return AuthorizationDecision.deny(
+                DenialReason.ORGANIZATION_MISMATCH,
+                "Consent is bound to another organization",
             )
 
         # 3. Load the Authoritative Consent State (the latest state row)

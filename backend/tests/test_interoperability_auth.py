@@ -19,7 +19,9 @@ def test_patient_can_export_own_fhir(client, db_session):
     from app.api.dependencies import get_current_user
     app.dependency_overrides[get_current_user] = lambda: patient
 
-    response = client.get(f"/api/interoperability/patients/{patient.id}/export")
+    response = client.get(
+        f"/api/interoperability/patients/{patient.id}/export?purpose=PATIENT_REQUEST"
+    )
     assert response.status_code == 200
     bundle = response.json()
     assert bundle["resourceType"] == "Bundle"
@@ -28,3 +30,15 @@ def test_patient_can_export_own_fhir(client, db_session):
     assert bundle["entry"][0]["resource"]["resourceType"] == "Patient"
 
     app.dependency_overrides.clear()
+
+
+def test_fhir_export_requires_explicit_purpose(client):
+    from app.api.dependencies import get_current_user
+
+    patient = User(id=100, role="patient", is_active=True)
+    app.dependency_overrides[get_current_user] = lambda: patient
+    try:
+        response = client.get("/api/interoperability/patients/100/export")
+        assert response.status_code == 422
+    finally:
+        app.dependency_overrides.clear()

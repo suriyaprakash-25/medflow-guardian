@@ -151,6 +151,7 @@ class AuthorizationContext:
 
     # ---- Phase 5 Extension Points ----
     purpose: Optional[str] = None
+    consent_id: Optional[int] = None
     consent_state_id: Optional[int] = None
     policy_version: Optional[str] = None
 
@@ -263,8 +264,8 @@ class AuthorizationService:
         try:
             resource_id_str = str(getattr(ctx.resource, "id", "")) if ctx.resource else None
             
-            consent_id = None
-            if hasattr(ctx, "relationship_context") and ctx.relationship_context:
+            consent_id = ctx.consent_id
+            if consent_id is None and ctx.relationship_context:
                 consent_id = getattr(ctx.relationship_context, "consent_id", None)
             
             log = AuditLog(
@@ -362,12 +363,20 @@ class AuthorizationService:
             )
         return None  # passed
 
-    def _has_visit_relationship(self, patient_id: int, doctor_id: int) -> bool:
+    def _has_visit_relationship(
+        self,
+        patient_id: int,
+        doctor_id: int,
+        hospital_id: Optional[int] = None,
+    ) -> bool:
         """Check if a visit relationship exists between patient and doctor."""
-        return self._db.query(Visit).filter(
+        query = self._db.query(Visit).filter(
             Visit.patient_id == patient_id,
-            Visit.doctor_id == doctor_id
-        ).first() is not None
+            Visit.doctor_id == doctor_id,
+        )
+        if hospital_id is not None:
+            query = query.filter(Visit.hospital_id == hospital_id)
+        return query.first() is not None
 
     def _get_active_grant(self, doctor_id: int, document_id: int) -> Optional[DocumentAccessGrant]:
         """Check if there is a non-expired, active grant for a doctor to access a document, returning the grant."""
@@ -539,16 +548,50 @@ class AuthorizationService:
 
     def _authorize_fhir_export(self, ctx: AuthorizationContext) -> AuthorizationDecision:
         actor = ctx.actor
+        if ctx.operation != Operation.READ:
+            return AuthorizationDecision.default_deny()
         if actor.role == "patient":
             if ctx.patient_id != actor.id:
                 return AuthorizationDecision.deny(DenialReason.RESOURCE_NOT_OWNED, "Cannot export other patient records")
             return AuthorizationDecision.allow()
         if actor.role == "doctor":
-            if ctx.relationship_context:
-                return AuthorizationDecision.allow()
-            if self._has_visit_relationship(ctx.patient_id, actor.id):
-                return AuthorizationDecision.allow()
-            return AuthorizationDecision.deny(DenialReason.RELATIONSHIP_REQUIRED, "No visit relationship or active grant")
+            from app.models.consent import Consent
+
+            consent = ctx.relationship_context
+            if not isinstance(consent, Consent) or not ctx.consent_id or consent.id != ctx.consent_id:
+                return AuthorizationDecision.deny(
+                    DenialReason.CONSENT_REQUIRED,
+                    "An explicit consent context is required for practitioner FHIR export",
+                )
+            if consent.patient_id != ctx.patient_id:
+                return AuthorizationDecision.deny(
+                    DenialReason.RESOURCE_NOT_OWNED,
+                    "Consent does not belong to the requested patient",
+                )
+            if consent.doctor_id is not None and consent.doctor_id != actor.id:
+                return AuthorizationDecision.deny(
+                    DenialReason.RELATIONSHIP_REQUIRED,
+                    "Consent is scoped to another practitioner",
+                )
+            if consent.hospital_id is not None:
+                if ctx.hospital_id != consent.hospital_id:
+                    return AuthorizationDecision.deny(
+                        DenialReason.ORGANIZATION_MISMATCH,
+                        "Consent organization does not match the authorization context",
+                    )
+                membership_denial = self._require_active_membership(actor.id, consent.hospital_id)
+                if membership_denial:
+                    return membership_denial
+            if not self._has_visit_relationship(
+                ctx.patient_id,
+                actor.id,
+                consent.hospital_id,
+            ):
+                return AuthorizationDecision.deny(
+                    DenialReason.RELATIONSHIP_REQUIRED,
+                    "No doctor-patient visit relationship exists",
+                )
+            return AuthorizationDecision.allow()
         return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
 
     def _authorize_consent(self, ctx: AuthorizationContext) -> AuthorizationDecision:

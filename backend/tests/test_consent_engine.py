@@ -3,6 +3,7 @@ from datetime import datetime
 from app.services.consent import ConsentService
 from app.services.authorization import AuthorizationContext, Operation, ResourceType, DenialReason
 from app.models.user import User
+from app.models.consent import Consent
 
 class MockPolicyVersion:
     def __init__(self, payload):
@@ -13,6 +14,12 @@ class MockConsentState:
         self.id = state_id
         self.status = status
         self.policy_version = policy
+
+class MockConsent:
+    def __init__(self, patient_id=1, doctor_id=2, hospital_id=None):
+        self.patient_id = patient_id
+        self.doctor_id = doctor_id
+        self.hospital_id = hospital_id
 
 class MockQuery:
     def __init__(self, state):
@@ -28,7 +35,7 @@ class MockDB:
     def __init__(self, authoritative_state):
         self.state = authoritative_state
     def query(self, model):
-        return MockQuery(self.state)
+        return MockQuery(MockConsent() if model is Consent else self.state)
 
 class MockRelationshipContext:
     def __init__(self, consent_id):
