@@ -34,14 +34,19 @@ Sample Response:
   }
 """
 
+import logging
+from typing import List
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import List
+
 from ai.schemas.alert_schema import AlertSchema
 from ai.schemas.prescription_schema import SafetyCheckRequest
 from ai.services.safety_service import run_safety_checks
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Clinical Safety"])
+
 
 class SafetyCheckResponse(BaseModel):
     alerts: List[AlertSchema] = Field(..., description="List of detected safety warnings")
@@ -51,17 +56,18 @@ class SafetyCheckResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 @router.post("/safety-check", response_model=SafetyCheckResponse, status_code=status.HTTP_200_OK)
 async def check_clinical_safety(request: SafetyCheckRequest):
     """
-    Evaluates prescription data for duplicate medications, allergy conflicts, and 
+    Evaluates prescription data for duplicate medications, allergy conflicts, and
     severe drug-drug interactions. Returns a list of clinical alerts and a safety score.
     """
     try:
-        results = run_safety_checks(request)
-        return results
-    except Exception as e:
+        return run_safety_checks(request)
+    except Exception:
+        logger.exception("Clinical safety evaluation failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while evaluating clinical safety: {str(e)}"
-        )
+            detail="Clinical safety evaluation failed",
+        ) from None

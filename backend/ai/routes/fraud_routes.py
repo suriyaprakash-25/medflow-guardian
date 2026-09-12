@@ -42,19 +42,25 @@ Sample Response:
   }
 """
 
+import logging
+from typing import List
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import List
+
 from ai.schemas.alert_schema import AlertSchema
 from ai.services.fraud_service import run_fraud_checks
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Fraud Detection"])
+
 
 class FraudCheckRequest(BaseModel):
     patient_id: str = Field(..., alias="patientId", description="Unique identifier for the patient to check")
 
     class Config:
         populate_by_name = True
+
 
 class FraudCheckResponse(BaseModel):
     alerts: List[AlertSchema] = Field(..., description="List of detected anomalies or policy violations")
@@ -63,6 +69,7 @@ class FraudCheckResponse(BaseModel):
     class Config:
         populate_by_name = True
 
+
 @router.post("/fraud-check", response_model=FraudCheckResponse, status_code=status.HTTP_200_OK)
 async def check_fraud_anomalies(request: FraudCheckRequest):
     """
@@ -70,10 +77,10 @@ async def check_fraud_anomalies(request: FraudCheckRequest):
     excessive fill frequencies, unusual billing totals, and sharp therapeutic class shifts.
     """
     try:
-        results = run_fraud_checks(request.patient_id)
-        return results
-    except Exception as e:
+        return run_fraud_checks(request.patient_id)
+    except Exception:
+        logger.exception("Fraud indicator evaluation failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while evaluating fraud indicators: {str(e)}"
-        )
+            detail="Fraud indicator evaluation failed",
+        ) from None

@@ -1,4 +1,4 @@
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
 import { Bell, Check, Circle, CheckCircle2 } from 'lucide-react';

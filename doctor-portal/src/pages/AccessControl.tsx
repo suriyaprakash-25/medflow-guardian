@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useDoctorContext } from '../components/Layout';
+import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
@@ -14,7 +14,6 @@ export default function AccessControl() {
     accessRequests, accessGrants, doctorVisits 
   } = useDoctorContext();
 
-  // Auto-populate the doctor's primary hospital based on their active visits
   useEffect(() => {
     if (!reqHospitalId && doctorVisits.length > 0 && doctorVisits[0].hospital_id) {
       setReqHospitalId(doctorVisits[0].hospital_id.toString());
@@ -29,8 +28,6 @@ export default function AccessControl() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        
-        {/* Left Column: Request Form & Sent Requests */}
         <div className="lg:col-span-7 space-y-6">
           <Card>
             <CardHeader className="bg-slate-50/50 border-b border-slate-100">
@@ -41,7 +38,6 @@ export default function AccessControl() {
             </CardHeader>
             <CardContent className="p-6">
               <form onSubmit={handleRequestAccess} className="space-y-6">
-                
                 <div className="space-y-2">
                   <label className="text-sm font-semibold text-slate-900">1. Select Patient</label>
                   <div className="flex gap-3">
@@ -129,18 +125,12 @@ export default function AccessControl() {
                 </div>
                 
                 <div className="pt-2">
-                  <Button 
-                    type="submit" 
-                    className="w-full bg-blue-600 hover:bg-blue-700" 
-                  >
-                    Submit Request to Patient
-                  </Button>
+                  <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">Submit Request to Patient</Button>
                 </div>
               </form>
             </CardContent>
           </Card>
 
-          {/* Sent Requests */}
           <Card>
             <CardHeader className="bg-slate-50/50 border-b border-slate-100">
               <CardTitle className="text-lg">Sent Access Requests</CardTitle>
@@ -148,11 +138,7 @@ export default function AccessControl() {
             <CardContent className="p-0">
               {accessRequests.length === 0 ? (
                 <div className="p-8">
-                  <EmptyState 
-                    icon={<Clock className="h-8 w-8 text-slate-300" />}
-                    title="No requests sent"
-                    description="You haven't requested any external records recently."
-                  />
+                  <EmptyState icon={<Clock className="h-8 w-8 text-slate-300" />} title="No requests sent" description="You haven't requested any external records recently." />
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto">
@@ -166,7 +152,6 @@ export default function AccessControl() {
                           </div>
                           <p className="text-sm text-slate-600 mt-1">"{req.reason}"</p>
                         </div>
-                        
                         {req.status === 'pending' && <Badge variant="secondary" className="bg-amber-100 text-amber-700 border-none"><Clock className="h-3 w-3 mr-1"/> Pending</Badge>}
                         {req.status === 'approved' && <Badge variant="default" className="bg-emerald-100 text-emerald-700 border-none"><CheckCircle className="h-3 w-3 mr-1"/> Approved</Badge>}
                         {req.status === 'rejected' && <Badge variant="destructive" className="bg-rose-100 text-rose-700 border-none"><XCircle className="h-3 w-3 mr-1"/> Rejected</Badge>}
@@ -179,7 +164,6 @@ export default function AccessControl() {
           </Card>
         </div>
 
-        {/* Right Column: Active Grants */}
         <div className="lg:col-span-5">
           <Card className="h-full border-t-4 border-t-emerald-500">
             <CardHeader className="bg-emerald-50/50 border-b border-emerald-100">
@@ -192,11 +176,7 @@ export default function AccessControl() {
             <CardContent className="p-0">
               {accessGrants.filter(g => g.status === 'active').length === 0 ? (
                 <div className="p-12">
-                  <EmptyState 
-                    icon={<FileText className="h-10 w-10 text-slate-300" />}
-                    title="No active grants"
-                    description="You don't have temporary access to any external documents."
-                  />
+                  <EmptyState icon={<FileText className="h-10 w-10 text-slate-300" />} title="No active grants" description="You don't have temporary access to any external documents." />
                 </div>
               ) : (
                 <div className="divide-y divide-slate-100">
@@ -208,25 +188,17 @@ export default function AccessControl() {
                         </div>
                         <div>
                           <h4 className="text-sm font-semibold text-slate-900">Patient #{grant.patient_id * 13}</h4>
-                          <p className="text-xs font-medium text-rose-500">
-                            Expires: {new Date(grant.expires_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                          </p>
+                          <p className="text-xs font-medium text-rose-500">Expires: {new Date(grant.expires_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</p>
                         </div>
                       </div>
-                      
                       <div className="space-y-2">
-                        {grant.granted_documents.map((doc: any) => (
+                        {grant.granted_documents.map(doc => (
                           <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg group">
                             <div className="flex items-center gap-2 overflow-hidden">
                               <FileText className="h-4 w-4 text-blue-500 shrink-0" />
                               <span className="text-sm font-medium text-slate-700 truncate" title={doc.title}>{doc.title}</span>
                             </div>
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleDownload(doc.id, doc.original_filename)}
-                              className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50 shrink-0"
-                            >
+                            <Button variant="ghost" size="sm" onClick={() => handleDownload(doc.id, doc.original_filename)} className="h-8 w-8 p-0 text-slate-400 hover:text-blue-600 hover:bg-blue-50 shrink-0">
                               <Download className="h-4 w-4" />
                             </Button>
                           </div>
@@ -239,7 +211,6 @@ export default function AccessControl() {
             </CardContent>
           </Card>
         </div>
-
       </div>
     </div>
   );
