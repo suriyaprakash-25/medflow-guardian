@@ -4,6 +4,7 @@ from typing import Dict, Any, Optional
 
 from app.core.database import get_db
 from app.models.user import User
+from app.models.hospital import Hospital
 from app.models.clinical import Prescription, LabResult, ClinicalNote
 from app.models.document import MedicalDocument
 from app.models.consent import Consent, ConsentState, ConsentPolicyVersion
@@ -86,15 +87,13 @@ def export_patient_fhir_bundle(
         doctor_ids.add(doc.uploaded_by_doctor_id)
         hospital_ids.add(doc.hospital_id)
 
-    # Add referenced practitioners and organizations so the exported Bundle is
-    # self-describing rather than leaving dangling Practitioner/Organization refs.
+    # Add referenced practitioners and organizations so the Bundle has no
+    # dangling Practitioner/Organization references.
     if doctor_ids:
         for doctor in db.query(User).filter(User.id.in_(doctor_ids), User.role == "doctor").all():
             resources.append(to_fhir_practitioner(doctor))
     if hospital_ids:
-        for hospital in db.query(__import__("app.models.hospital", fromlist=["Hospital"]).Hospital).filter(
-            __import__("app.models.hospital", fromlist=["Hospital"]).Hospital.id.in_(hospital_ids)
-        ).all():
+        for hospital in db.query(Hospital).filter(Hospital.id.in_(hospital_ids)).all():
             resources.append(to_fhir_organization(hospital))
 
     # For provider disclosure, expose the exact authoritative consent state and
@@ -111,7 +110,6 @@ def export_patient_fhir_bundle(
                 if doctor and doctor.id not in doctor_ids:
                     resources.append(to_fhir_practitioner(doctor))
             if consent.hospital_id:
-                from app.models.hospital import Hospital
                 hospital = db.query(Hospital).filter(Hospital.id == consent.hospital_id).first()
                 if hospital and hospital.id not in hospital_ids:
                     resources.append(to_fhir_organization(hospital))
