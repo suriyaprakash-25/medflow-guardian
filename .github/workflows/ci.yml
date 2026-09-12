@@ -64,7 +64,7 @@ jobs:
         cd backend
         pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_interoperability_auth.py -v
 
-    - name: Run R7 storage, malware, and audit verification
+    - name: Run R7 storage, malware, worker, and audit verification
       env:
         TESTING: "True"
         ENV: test
@@ -75,7 +75,56 @@ jobs:
         SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
-        pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_storage_security.py tests/test_malware_quarantine.py tests/test_authorization_audit_fail_closed.py -v
+        pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_malware_worker.py tests/test_storage_security.py tests/test_malware_quarantine.py tests/test_authorization_audit_fail_closed.py -v
+
+    - name: Start live ClamAV for R7 protocol verification
+      run: |
+        docker run -d --name clamav-r7 -p 3310:3310 \
+          -e CLAMAV_NO_FRESHCLAMD=true \
+          clamav/clamav:stable
+        python - <<'PY'
+        import socket
+        import time
+
+        deadline = time.time() + 180
+        last_error = None
+        while time.time() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", 3310), timeout=3) as sock:
+                    sock.settimeout(3)
+                    sock.sendall(b"zPING\0")
+                    response = sock.recv(64)
+                    if b"PONG" in response:
+                        print("clamd is ready")
+                        raise SystemExit(0)
+            except OSError as exc:
+                last_error = exc
+            time.sleep(3)
+
+        raise SystemExit(f"clamd did not become ready: {last_error}")
+        PY
+
+    - name: Run live ClamAV INSTREAM integration tests
+      env:
+        CLAMAV_INTEGRATION: "1"
+        CLAMAV_HOST: 127.0.0.1
+        CLAMAV_PORT: "3310"
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://medflow:password@localhost:5432/medflow_test
+        SECRET_KEY: test_secret_key_ci
+        SUPABASE_URL: http://localhost:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
+        SUPABASE_STORAGE_BUCKET: medflow-bucket
+      run: |
+        cd backend
+        pytest tests/test_clamav_integration.py -v
+
+    - name: Stop live ClamAV
+      if: always()
+      run: |
+        docker logs clamav-r7 || true
+        docker rm -f clamav-r7 || true
 
     - name: Run Backend Security & Integration Tests
       env:
