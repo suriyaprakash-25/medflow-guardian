@@ -86,12 +86,7 @@ def _revoke_token_family(db: DBSession, user_id: int, token_family: str) -> None
 
 
 def _issue_tokens(db: DBSession, response: Response, user: User) -> MFAResponse:
-    """Issue a short-lived access token plus a rotating refresh-token family."""
-    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        subject=user.email, expires_delta=access_token_expires
-    )
-
+    """Issue an access token bound to a rotating server-side session."""
     raw_refresh_token = create_refresh_token()
     token_family = str(uuid.uuid4())
 
@@ -102,6 +97,16 @@ def _issue_tokens(db: DBSession, response: Response, user: User) -> MFAResponse:
         expires_at=datetime.now(timezone.utc) + timedelta(days=7)
     )
     db.add(session_record)
+    # The session primary key is required before the access JWT is minted so
+    # logout/password/session revocation can invalidate that JWT immediately.
+    db.flush()
+
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        subject=user.email,
+        expires_delta=access_token_expires,
+        session_id=session_record.id,
+    )
     db.commit()
 
     set_refresh_cookie(response, raw_refresh_token)
@@ -275,7 +280,9 @@ def refresh_token(request: Request, response: Response, db: DBSession = Depends(
 
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(
-        subject=user.email, expires_delta=access_token_expires
+        subject=user.email,
+        expires_delta=access_token_expires,
+        session_id=session_record.id,
     )
 
     return {"access_token": access_token, "token_type": "bearer", "role": user.role}
