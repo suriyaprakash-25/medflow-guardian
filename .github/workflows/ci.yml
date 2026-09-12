@@ -19,7 +19,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd pg_isready
+          --health-cmd "pg_isready -U medflow -d medflow_test"
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
@@ -64,7 +64,7 @@ jobs:
         cd backend
         pytest tests/test_fhir_consent_import.py tests/test_fhir_consent_import_fail_closed.py tests/test_interoperability_auth.py -v
 
-    - name: Run R7 storage and malware verification
+    - name: Run R7 storage, malware, and audit verification
       env:
         TESTING: "True"
         ENV: test
@@ -75,7 +75,7 @@ jobs:
         SUPABASE_STORAGE_BUCKET: medflow-bucket
       run: |
         cd backend
-        pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_storage_security.py tests/test_malware_quarantine.py -v
+        pytest tests/test_malware_scanner.py tests/test_malware_scan_state.py tests/test_storage_security.py tests/test_malware_quarantine.py tests/test_authorization_audit_fail_closed.py -v
 
     - name: Run Backend Security & Integration Tests
       env:
