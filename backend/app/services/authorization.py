@@ -536,16 +536,26 @@ class AuthorizationService:
 
     def _authorize_fhir_export(self, ctx: AuthorizationContext) -> AuthorizationDecision:
         actor = ctx.actor
+
         if actor.role == "patient":
             if ctx.patient_id != actor.id:
-                return AuthorizationDecision.deny(DenialReason.RESOURCE_NOT_OWNED, "Cannot export other patient records")
+                return AuthorizationDecision.deny(
+                    DenialReason.RESOURCE_NOT_OWNED,
+                    "Cannot export other patient records"
+                )
             return AuthorizationDecision.allow()
+
         if actor.role == "doctor":
-            if ctx.relationship_context:
-                return AuthorizationDecision.allow()
-            if self._has_visit_relationship(ctx.patient_id, actor.id):
-                return AuthorizationDecision.allow()
-            return AuthorizationDecision.deny(DenialReason.RELATIONSHIP_REQUIRED, "No visit relationship or active grant")
+            # Provider FHIR export is a bulk disclosure and therefore requires
+            # explicit consent context. A visit/relationship is intentionally
+            # NOT sufficient and must never be used as a fallback here.
+            if not ctx.relationship_context:
+                return AuthorizationDecision.deny(
+                    DenialReason.CONSENT_REQUIRED,
+                    "Provider FHIR export requires explicit consent context"
+                )
+            return AuthorizationDecision.allow()
+
         return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED, "")
 
     # ------------------------------------------------------------------
