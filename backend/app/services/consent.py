@@ -2,6 +2,7 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models.consent import Consent, ConsentState, ConsentStatus
+from app.models.hospital import HospitalStaff
 from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
 
 
@@ -41,28 +42,41 @@ class ConsentService:
                 "Consent not found",
             )
 
-        # The consent must belong to the patient whose data is being accessed.
         if consent.patient_id != ctx.patient_id:
             return AuthorizationDecision.deny(
                 DenialReason.INVALID_CONTEXT,
                 "Consent is not bound to the requested patient",
             )
 
-        # A doctor-specific consent can only authorize that doctor.
+        if ctx.actor.role != "doctor":
+            return AuthorizationDecision.deny(
+                DenialReason.ROLE_NOT_PERMITTED,
+                "Only doctors may use cross-role provider consent",
+            )
+
         if consent.doctor_id is not None and consent.doctor_id != ctx.actor.id:
             return AuthorizationDecision.deny(
                 DenialReason.INVALID_CONTEXT,
                 "Consent is not bound to the requesting doctor",
             )
 
-        # A hospital-specific consent requires an explicit matching hospital context.
-        if consent.hospital_id is not None and consent.hospital_id != ctx.hospital_id:
-            return AuthorizationDecision.deny(
-                DenialReason.INVALID_CONTEXT,
-                "Consent is not bound to the requesting hospital",
-            )
+        if consent.hospital_id is not None:
+            membership = self._db.query(HospitalStaff).filter(
+                HospitalStaff.user_id == ctx.actor.id,
+                HospitalStaff.hospital_id == consent.hospital_id,
+                HospitalStaff.is_active.is_(True),
+            ).first()
+            if not membership:
+                return AuthorizationDecision.deny(
+                    DenialReason.MEMBERSHIP_REQUIRED,
+                    "Doctor is not an active member of the consent hospital",
+                )
+            if ctx.hospital_id is not None and ctx.hospital_id != consent.hospital_id:
+                return AuthorizationDecision.deny(
+                    DenialReason.INVALID_CONTEXT,
+                    "Consent is not bound to the requesting hospital",
+                )
 
-        # Relationship objects must not contradict the consent itself.
         for field in ("patient_id", "doctor_id", "hospital_id"):
             relationship_value = getattr(relationship, field, None)
             consent_value = getattr(consent, field, None)
