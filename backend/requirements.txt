@@ -8,7 +8,7 @@ passlib==1.7.4
 # Passlib 1.7.4 relies on bcrypt metadata and initialization behavior removed
 # by newer bcrypt releases. Keep the known-compatible backend until password
 # hashing is migrated away from Passlib.
-bcrypt==4.0.1
+bcrypt==5.0.0
 python-jose[cryptography]>=3.3.0
 python-multipart>=0.0.32
 email-validator>=2.1.0
