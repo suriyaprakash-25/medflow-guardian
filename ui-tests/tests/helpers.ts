@@ -20,7 +20,7 @@ export const portals = {
     email: 'admin@demo.com',
     password: 'password',
     emailLabel: 'Administrator email',
-    heading: /dashboard/i,
+    heading: /platform governance/i,
   },
 } as const;
 
@@ -39,4 +39,8 @@ export async function signIn(page: Page, role: PortalRole) {
 export async function expectNoHorizontalOverflow(page: Page) {
   const sizes = await page.evaluate(() => ({ viewport: window.innerWidth, scroll: document.documentElement.scrollWidth }));
   expect(sizes.scroll, `page scrollWidth ${sizes.scroll} should not exceed viewport ${sizes.viewport}`).toBeLessThanOrEqual(sizes.viewport + 1);
+}
+
+export async function disableMotion(page: Page) {
+  await page.addStyleTag({ content: '* { animation: none !important; transition: none !important; caret-color: transparent !important; }' });
 }
