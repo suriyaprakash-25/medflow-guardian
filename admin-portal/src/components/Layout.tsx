@@ -1,116 +1,99 @@
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Users, ShieldAlert, LogOut, ShieldCheck, Settings, Bell, ChevronRight, Building } from 'lucide-react';
-import { api } from '../lib/api';
+import { LayoutDashboard, Users, ShieldAlert, LogOut, ShieldCheck, Settings, Building } from 'lucide-react';
+import { api, clearAccessToken } from '../lib/api';
+
+interface StoredAdminUser {
+  full_name?: string;
+  email?: string;
+  role?: string;
+  system_role?: string;
+}
 
 export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
+  let user: StoredAdminUser = {};
+  try { user = JSON.parse(localStorage.getItem('user') || '{}') as StoredAdminUser; } catch { user = {}; }
 
   const handleLogout = async () => {
-    try {
-      await api.post('/api/auth/logout');
-    } catch (error) {
-      console.error('Failed to revoke server session during logout', error);
-    } finally {
-      localStorage.removeItem('token');
+    try { await api.post('/api/auth/logout'); }
+    catch (error) { console.error('Failed to revoke server session during logout', error); }
+    finally {
+      clearAccessToken();
       localStorage.removeItem('user');
       navigate('/login');
     }
   };
 
+  const isPlatformAdmin = user.system_role === 'platform_admin' || user.role === 'platform_admin';
   const navItems = [
     { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-    ...(user.role === 'platform_admin' ? [{ name: 'Organizations', path: '/organizations', icon: Building }] : []),
-    { name: 'Staff Directory', path: '/staff', icon: Users },
-    { name: 'Security Audit', path: '/audit', icon: ShieldAlert },
+    ...(isPlatformAdmin ? [{ name: 'Organizations', path: '/organizations', icon: Building }] : []),
+    { name: 'Staff', path: '/staff', icon: Users },
+    { name: 'Audit', path: '/audit', icon: ShieldAlert },
+    { name: 'Settings', path: '/settings', icon: Settings },
   ];
+
+  const pageTitle = navItems.find((item) => location.pathname.startsWith(item.path))?.name || 'Administration';
 
   return (
     <div className="flex h-screen bg-slate-50 font-sans">
-      {/* Sidebar */}
-      <aside className="w-72 bg-slate-900 text-white flex flex-col shadow-2xl relative z-20">
-        <div className="p-6 flex items-center gap-3 border-b border-slate-800">
-          <div className="bg-blue-600 p-2 rounded-xl shadow-lg shadow-blue-500/20">
-            <ShieldCheck className="h-7 w-7 text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight text-white">MedFlow</h1>
-            <p className="text-xs font-medium text-blue-400 tracking-wider uppercase mt-0.5">Guardian Console</p>
-          </div>
+      <a href="#admin-main" className="skip-link">Skip to main content</a>
+      <aside className="relative z-20 hidden w-72 shrink-0 flex-col bg-slate-950 text-white shadow-2xl md:flex" aria-label="Admin navigation">
+        <div className="flex items-center gap-3 border-b border-slate-800 p-6">
+          <div className="rounded-xl bg-blue-700 p-2"><ShieldCheck className="h-7 w-7 text-white" aria-hidden="true" /></div>
+          <div><h1 className="text-xl font-bold tracking-tight">MedFlow</h1><p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-blue-300">Guardian console</p></div>
         </div>
-
         <div className="px-6 py-4">
-          <div className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
-            <div className="text-sm font-semibold text-slate-200 truncate">{user.full_name}</div>
-            <div className="text-xs text-slate-400 mt-1 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-              {user.role === 'platform_admin' ? 'Platform Administrator' : 'Organization Admin'}
-            </div>
+          <div className="rounded-xl border border-slate-700 bg-slate-900 p-4">
+            <div className="truncate text-sm font-semibold text-slate-100">{user.full_name || user.email || 'Administrator'}</div>
+            <div className="mt-1 text-xs text-slate-400">{isPlatformAdmin ? 'Platform administrator' : 'Organization administrator'}</div>
           </div>
         </div>
-
-        <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-4 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = location.pathname.startsWith(item.path);
             return (
-              <NavLink
-                key={item.path}
-                to={item.path}
-                className={`flex items-center justify-between px-4 py-3 rounded-xl transition-all duration-200 group ${
-                  isActive 
-                    ? 'bg-blue-600/10 text-blue-400 font-medium border border-blue-500/20' 
-                    : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon className={`h-5 w-5 ${isActive ? 'text-blue-400' : 'text-slate-500 group-hover:text-slate-300'}`} />
-                  {item.name}
-                </div>
-                {isActive && <ChevronRight className="h-4 w-4 opacity-50" />}
+              <NavLink key={item.path} to={item.path} className={({ isActive }) => `flex min-h-11 items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-blue-400 ${isActive ? 'bg-blue-700 text-white' : 'text-slate-300 hover:bg-slate-800 hover:text-white'}`}>
+                <Icon className="h-5 w-5" aria-hidden="true" />{item.name}
               </NavLink>
             );
           })}
         </nav>
-
-        <div className="p-4 border-t border-slate-800 space-y-1">
-          <NavLink 
-            to="/settings"
-            className={({isActive}) => `flex w-full items-center gap-3 px-4 py-3 rounded-xl transition-colors ${isActive ? 'bg-blue-600/10 text-blue-400 font-medium border border-blue-500/20' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'}`}
-          >
-            <Settings className="h-5 w-5 opacity-70" />
-            <span>Settings</span>
-          </NavLink>
-          <button
-            onClick={handleLogout}
-            className="flex w-full items-center gap-3 px-4 py-3 text-red-400 rounded-xl hover:bg-red-500/10 hover:text-red-300 transition-colors"
-          >
-            <LogOut className="h-5 w-5 opacity-70" />
-            <span>Secure Logout</span>
+        <div className="border-t border-slate-800 p-4">
+          <button type="button" onClick={() => void handleLogout()} className="flex min-h-11 w-full items-center gap-3 rounded-xl px-4 py-3 text-rose-300 transition-colors hover:bg-rose-500/10 hover:text-rose-200 focus-visible:ring-2 focus-visible:ring-rose-300">
+            <LogOut className="h-5 w-5" aria-hidden="true" />Secure logout
           </button>
         </div>
       </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 flex flex-col min-w-0 bg-slate-50/50">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8 z-10 sticky top-0 shadow-sm shadow-slate-100">
-          <h2 className="text-lg font-semibold text-slate-800 capitalize">
-            {location.pathname.split('/')[1] || 'Dashboard'}
-          </h2>
-          <div className="flex items-center gap-4">
-            <button className="relative p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-full transition-colors">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-red-500 border-2 border-white"></span>
-            </button>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-30 flex min-h-16 items-center justify-between border-b border-slate-200 bg-white px-4 shadow-sm md:px-8">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-blue-700 md:hidden">MedFlow admin</p>
+            <h2 className="text-lg font-semibold text-slate-900">{pageTitle}</h2>
           </div>
+          <p className="hidden text-xs text-slate-500 sm:block">Administrative changes are server-authorized and audited.</p>
         </header>
-        <div className="flex-1 overflow-y-auto p-8">
-          <div className="max-w-6xl mx-auto">
-            <Outlet />
+        <main id="admin-main" className="flex-1 overflow-y-auto bg-slate-50/50 p-4 pb-28 md:p-8 md:pb-8" tabIndex={-1}>
+          <div className="mx-auto max-w-6xl"><Outlet /></div>
+        </main>
+
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Admin mobile navigation">
+          <div className="flex overflow-x-auto px-1">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = location.pathname.startsWith(item.path);
+              return (
+                <NavLink key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={`flex min-h-16 min-w-[5.25rem] flex-1 flex-col items-center justify-center gap-1 px-2 text-[11px] font-semibold ${active ? 'text-blue-800' : 'text-slate-600'}`}>
+                  <Icon className="h-5 w-5" aria-hidden="true" />{item.name}
+                </NavLink>
+              );
+            })}
+            <button type="button" onClick={() => void handleLogout()} className="flex min-h-16 min-w-[5.25rem] flex-1 flex-col items-center justify-center gap-1 px-2 text-[11px] font-semibold text-rose-700"><LogOut className="h-5 w-5" aria-hidden="true" />Logout</button>
           </div>
-        </div>
-      </main>
+        </nav>
+      </div>
     </div>
   );
 }
