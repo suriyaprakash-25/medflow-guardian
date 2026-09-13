@@ -5,6 +5,9 @@ import { Card, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
 import { EmptyState } from '@shared/ui/EmptyState';
+import { FormField } from '@shared/ui/FormField';
+import { Input } from '@shared/ui/Input';
+import { ResponsiveTable } from '@shared/ui/ResponsiveTable';
 import { Users, Search, Activity, ChevronRight, User } from 'lucide-react';
 
 export default function Patients() {
@@ -17,111 +20,81 @@ export default function Patients() {
     navigate('/patient-details');
   };
 
-  const filteredVisits = doctorVisits.filter(v => 
-    v.patient_id.toString().includes(searchTerm) || 
-    (v.hospital?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (v.reason || '').toLowerCase().includes(searchTerm.toLowerCase())
+  const filteredVisits = doctorVisits.filter((visit) =>
+    visit.patient_id.toString().includes(searchTerm) ||
+    (visit.hospital?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (visit.reason || '').toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-500">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+    <div className="space-y-6">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-end">
         <div>
-          <h2 className="text-2xl font-bold tracking-tight text-slate-900">My Patients</h2>
-          <p className="text-sm text-slate-500 mt-1">Active and past patient encounters.</p>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-950">My patients</h2>
+          <p className="mt-1 text-sm text-slate-600">Patients shown here come from visits assigned to your authenticated clinician context.</p>
         </div>
-        
-        <div className="relative w-full sm:w-72">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-            <Search className="h-4 w-4 text-slate-400" />
-          </div>
-          <input
-            type="text"
-            placeholder="Search by ID, hospital, or reason..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="block w-full !pl-10 pr-3 py-2 border border-slate-200 rounded-lg text-sm bg-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-shadow"
-          />
+        <div className="w-full sm:w-80">
+          <FormField id="patient-search" label="Search patient visits">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-500" aria-hidden="true" />
+              <Input id="patient-search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Patient ID, hospital, or visit reason" className="pl-10" />
+            </div>
+          </FormField>
         </div>
       </div>
 
       <Card>
         <CardContent className="p-0">
           {filteredVisits.length === 0 ? (
-            <div className="p-12">
-              <EmptyState 
-                icon={<Users className="h-10 w-10 text-slate-300" />}
-                title={doctorVisits.length === 0 ? "No active patients" : "No results found"}
-                description={
-                  doctorVisits.length === 0 
-                    ? "You haven't been assigned any patients yet." 
-                    : "Try adjusting your search terms."
-                }
+            <div className="p-8 sm:p-12">
+              <EmptyState
+                icon={<Users className="h-10 w-10 text-slate-400" />}
+                title={doctorVisits.length === 0 ? 'No assigned patient visits' : 'No matching patient visits'}
+                description={doctorVisits.length === 0 ? 'No visits are currently assigned to this clinician account.' : 'Change the search terms and try again.'}
               />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+            <ResponsiveTable label="Assigned patient visits">
+              <table className="mobile-card-table w-full border-collapse text-left">
                 <thead>
-                  <tr className="bg-slate-50/80 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-semibold">
-                    <th className="px-6 py-4">Patient</th>
-                    <th className="px-6 py-4">Hospital Context</th>
-                    <th className="px-6 py-4">Reason for Visit</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4 text-right">Action</th>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold uppercase tracking-wider text-slate-600">
+                    <th scope="col" className="px-6 py-4">Patient</th>
+                    <th scope="col" className="px-6 py-4">Hospital context</th>
+                    <th scope="col" className="px-6 py-4">Reason for visit</th>
+                    <th scope="col" className="px-6 py-4">Visit status</th>
+                    <th scope="col" className="px-6 py-4 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredVisits.map(v => (
-                    <tr 
-                      key={v.id} 
-                      className="hover:bg-slate-50/80 transition-colors group cursor-pointer"
-                      onClick={() => handleSelectPatient(v.patient_id)}
-                    >
-                      <td className="px-6 py-4 align-middle">
+                  {filteredVisits.map((visit) => (
+                    <tr key={visit.id} className="hover:bg-slate-50">
+                      <td data-label="Patient" className="px-6 py-4 align-middle">
                         <div className="flex items-center gap-3">
-                          <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold shrink-0">
-                            <User className="h-5 w-5" />
-                          </div>
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-700"><User className="h-5 w-5" aria-hidden="true" /></div>
                           <div>
-                            <div className="font-semibold text-slate-900 text-sm">Patient #{v.patient_id * 13}</div>
-                            <div className="text-xs text-slate-500 font-mono mt-0.5">ID: {v.patient_id}</div>
+                            <div className="text-sm font-semibold text-slate-950">Patient ID {visit.patient_id}</div>
+                            <div className="mt-0.5 text-xs text-slate-500">Authoritative system identifier</div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 align-middle">
-                        <div className="text-sm font-medium text-slate-800">{v.hospital?.name || 'Unknown'}</div>
-                        <div className="text-xs text-slate-500">Visit #{v.id}</div>
+                      <td data-label="Hospital context" className="px-6 py-4 align-middle">
+                        <div className="text-sm font-medium text-slate-800">{visit.hospital?.name || `Hospital ID ${visit.hospital_id}`}</div>
+                        <div className="text-xs text-slate-500">Visit ID {visit.id}</div>
                       </td>
-                      <td className="px-6 py-4 align-middle">
-                        <div className="text-sm text-slate-600 truncate max-w-[200px]" title={v.reason || ''}>
-                          {v.reason || 'Not specified'}
-                        </div>
+                      <td data-label="Reason for visit" className="px-6 py-4 align-middle"><div className="max-w-[18rem] text-sm text-slate-700">{visit.reason || 'Not recorded'}</div></td>
+                      <td data-label="Visit status" className="px-6 py-4 align-middle">
+                        <Badge variant="secondary"><Activity className="mr-1 h-3 w-3" aria-hidden="true" />{visit.status}</Badge>
                       </td>
-                      <td className="px-6 py-4 align-middle">
-                        <Badge variant={v.status === 'Active' ? 'default' : 'secondary'} className={v.status === 'Active' ? 'bg-blue-100 text-blue-700 hover:bg-blue-100 border-none' : ''}>
-                          <Activity className="w-3 h-3 mr-1" />
-                          {v.status}
-                        </Badge>
-                      </td>
-                      <td className="px-6 py-4 align-middle text-right">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium group-hover:translate-x-1 transition-transform"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleSelectPatient(v.patient_id);
-                          }}
-                        >
-                          View Details <ChevronRight className="h-4 w-4 ml-1" />
+                      <td data-label="Action" className="px-6 py-4 text-right align-middle">
+                        <Button variant="ghost" size="sm" onClick={() => handleSelectPatient(visit.patient_id)} className="text-blue-700 hover:bg-blue-50 hover:text-blue-800">
+                          Open patient workspace <ChevronRight className="ml-1 h-4 w-4" aria-hidden="true" />
                         </Button>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
+            </ResponsiveTable>
           )}
         </CardContent>
       </Card>
