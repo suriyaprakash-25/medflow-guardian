@@ -6,23 +6,23 @@
   },
   {
     "endpoint": "/api/auth/me",
-    "status": "timed out",
-    "result": "FAIL"
+    "status": 200,
+    "result": "PASS"
   },
   {
     "endpoint": "/api/triage/",
-    "status": "timed out",
-    "result": "FAIL"
+    "status": 200,
+    "result": "PASS"
   },
   {
     "endpoint": "/api/visits/doctor",
-    "status": "timed out",
-    "result": "FAIL"
+    "status": 200,
+    "result": "PASS"
   },
   {
     "endpoint": "/api/appointments/doctor/2",
-    "status": "timed out",
-    "result": "FAIL"
+    "status": 200,
+    "result": "PASS"
   },
   {
     "endpoint": "/api/access-requests/doctor",
@@ -31,8 +31,8 @@
   },
   {
     "endpoint": "/api/access-grants/doctor",
-    "status": 500,
-    "result": "FAIL"
+    "status": 200,
+    "result": "PASS"
   },
   {
     "endpoint": "/api/notifications",

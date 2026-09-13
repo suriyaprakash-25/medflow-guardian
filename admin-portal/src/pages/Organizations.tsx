@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Building, CheckCircle2, Pencil, Plus, Search, XCircle } from 'lucide-react';
+import { CheckCircle2, Pencil, Plus, Search, XCircle } from 'lucide-react';
 import { Button } from '@shared/ui/Button';
 import { Dialog } from '@shared/ui/Dialog';
 import { FeedbackState } from '@shared/ui/FeedbackState';

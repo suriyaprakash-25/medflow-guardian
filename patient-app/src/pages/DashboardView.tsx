@@ -5,7 +5,13 @@ import { Button } from '@shared/ui/Button';
 import { Select } from '@shared/ui/Select';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { FormField } from '@shared/ui/FormField';
-import { HeartPulse, MessageSquare, Send, PlusCircle } from 'lucide-react';
+import { HeartPulse, MessageSquare, Send, PlusCircle, CheckCheck } from 'lucide-react';
+import React, { Suspense } from 'react';
+
+const LineChart = React.lazy(() => import('recharts').then(module => ({ default: module.LineChart })));
+const Line = React.lazy(() => import('recharts').then(module => ({ default: module.Line })));
+const ResponsiveContainer = React.lazy(() => import('recharts').then(module => ({ default: module.ResponsiveContainer })));
+const YAxis = React.lazy(() => import('recharts').then(module => ({ default: module.YAxis })));
 
 export default function DashboardView() {
   const {
@@ -59,26 +65,27 @@ export default function DashboardView() {
             </CardHeader>
             <CardContent>
               {latestReading ? (
-                <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center"><dt className="text-sm text-slate-600">Heart rate</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.heart_rate} <span className="text-sm font-normal text-slate-600">bpm</span></dd></div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center"><dt className="text-sm text-slate-600">Oxygen saturation</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.oxygen_level}<span className="text-sm font-normal text-slate-600">%</span></dd></div>
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center"><dt className="text-sm text-slate-600">Blood pressure</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.blood_pressure_sys}/{latestReading.blood_pressure_dia} <span className="text-sm font-normal text-slate-600">mmHg</span></dd></div>
-                </dl>
-              ) : <FeedbackState tone="empty" title="No recorded vitals" message="No vital-sign readings are available in your record." compact />}
-
-              {readings.length > 1 ? (
-                <div className="mt-6 border-t border-slate-100 pt-4">
-                  <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-600">Previous readings</h3>
-                  <ul className="max-h-40 space-y-2 overflow-y-auto pr-1">
-                    {readings.slice(0, -1).reverse().map((reading) => (
-                      <li key={reading.id} className="flex flex-col gap-1 border-b border-slate-100 py-2 text-sm sm:flex-row sm:items-center sm:justify-between">
-                        <time className="text-slate-500" dateTime={reading.created_at}>{new Date(reading.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</time>
-                        <span className="font-medium text-slate-800">HR {reading.heart_rate} bpm · O₂ {reading.oxygen_level}% · BP {reading.blood_pressure_sys}/{reading.blood_pressure_dia} mmHg</span>
-                      </li>
-                    ))}
-                  </ul>
+                <div className="space-y-6">
+                  <dl className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div className="glass-panel rounded-xl p-4 text-center"><dt className="text-sm text-slate-600">Heart rate</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.heart_rate} <span className="text-sm font-normal text-slate-600">bpm</span></dd></div>
+                    <div className="glass-panel rounded-xl p-4 text-center"><dt className="text-sm text-slate-600">Oxygen sat</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.oxygen_level}<span className="text-sm font-normal text-slate-600">%</span></dd></div>
+                    <div className="glass-panel rounded-xl p-4 text-center"><dt className="text-sm text-slate-600">Blood pressure</dt><dd className="mt-1 text-2xl font-bold text-slate-950">{latestReading.blood_pressure_sys}/{latestReading.blood_pressure_dia} <span className="text-sm font-normal text-slate-600">mmHg</span></dd></div>
+                  </dl>
+                  {readings.length > 1 && (
+                    <div className="h-24 w-full mt-4">
+                      <Suspense fallback={<div className="h-full w-full flex items-center justify-center text-xs text-slate-400">Loading chart...</div>}>
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={readings.slice().reverse()}>
+                            <YAxis domain={['dataMin - 10', 'dataMax + 10']} hide />
+                            <Line type="monotone" dataKey="heart_rate" stroke="#e11d48" strokeWidth={3} dot={false} isAnimationActive={true} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </Suspense>
+                      <p className="text-center text-xs text-slate-400 mt-1">Heart rate trend (historic)</p>
+                    </div>
+                  )}
                 </div>
-              ) : null}
+              ) : <FeedbackState tone="empty" title="No recorded vitals" message="No vital-sign readings are available in your record." compact />}
             </CardContent>
           </Card>
         </div>
@@ -95,17 +102,27 @@ export default function DashboardView() {
               </FormField>
             </div>
           </CardHeader>
-          <CardContent className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50/30 p-4" aria-live="polite">
+          <CardContent className="flex flex-1 flex-col gap-3 overflow-y-auto bg-slate-50/50 p-4 relative" aria-live="polite">
             {!activeDoctorId ? <FeedbackState tone="empty" title="Choose a clinician" message="Select a clinician from a recorded visit to view the conversation." compact /> : messages.length === 0 ? <FeedbackState tone="empty" title="No messages yet" message="Messages exchanged with this clinician will appear here." compact /> : messages.map((message) => {
               const isMine = message.sender_id !== activeDoctorId;
-              return <div key={message.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}><div className={`max-w-[88%] rounded-2xl px-4 py-2 text-sm ${isMine ? 'rounded-br-sm bg-blue-700 text-white' : 'rounded-bl-sm border border-slate-200 bg-white text-slate-900'}`}>{message.content}</div><time className="mt-1 px-1 text-[11px] text-slate-500" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time></div>;
+              return (
+                <div key={message.id} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'} group animate-in slide-in-from-bottom-2 duration-300`}>
+                  <div className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all hover:shadow-md ${isMine ? 'rounded-br-sm bg-blue-600 text-white' : 'rounded-bl-sm border border-slate-200 bg-white text-slate-900'}`}>
+                    {message.content}
+                  </div>
+                  <div className="flex items-center gap-1 mt-1 px-1 opacity-70 group-hover:opacity-100 transition-opacity">
+                    <time className="text-[10px] font-medium text-slate-500" dateTime={message.created_at}>{new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</time>
+                    {isMine && <CheckCheck className="h-3 w-3 text-blue-500" />}
+                  </div>
+                </div>
+              );
             })}
             <div ref={messagesEndRef} />
           </CardContent>
-          <div className="border-t border-slate-100 bg-white p-4">
-            <form onSubmit={sendMessage} className="flex items-end gap-2">
-              <div className="flex-1"><FormField id="message-input" label="Message"><input id="message-input" type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Write a message" className="min-h-11 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100" disabled={!activeDoctorId} /></FormField></div>
-              <Button type="submit" size="icon" aria-label="Send message" disabled={!activeDoctorId || !chatInput.trim()}><Send className="h-4 w-4" aria-hidden="true" /></Button>
+          <div className="border-t border-slate-100 bg-white/80 backdrop-blur-md p-4 rounded-b-xl">
+            <form onSubmit={sendMessage} className="flex items-end gap-2 relative">
+              <div className="flex-1"><FormField id="message-input" label="Message"><input id="message-input" type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Type a secure message..." className="min-h-12 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 py-2 text-sm shadow-inner transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100" disabled={!activeDoctorId} /></FormField></div>
+              <Button type="submit" size="icon" aria-label="Send message" disabled={!activeDoctorId || !chatInput.trim()} className="rounded-full h-12 w-12 shadow-md hover:shadow-lg transition-all active:scale-95"><Send className="h-4 w-4" aria-hidden="true" /></Button>
             </form>
           </div>
         </Card>

@@ -5,13 +5,15 @@ import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
 import { EmptyState } from '@shared/ui/EmptyState';
 import { FeedbackState } from '@shared/ui/FeedbackState';
-import { Activity, CheckCircle, Clock, AlertTriangle, ShieldAlert, User } from 'lucide-react';
+import { Activity, CheckCircle, Clock, AlertTriangle, ShieldAlert } from 'lucide-react';
 
 const normalized = (value: string | null | undefined) => (value || '').trim().toLowerCase();
 
 export default function DashboardView() {
   const { requests, updateStatus, isAdmin, adminData } = useDoctorContext();
   const [filter, setFilter] = useState<'all' | 'critical' | 'high' | 'pending'>('all');
+  const [selectedRequestId, setSelectedRequestId] = useState<number | null>(null);
+  const selectedRequest = requests.find((r) => r.id === selectedRequestId) || null;
 
   if (isAdmin) {
     return (
@@ -125,37 +127,62 @@ export default function DashboardView() {
           {filteredRequests.length === 0 ? (
             <div className="p-8 sm:p-12"><EmptyState icon={<Activity className="h-10 w-10 text-emerald-500" />} title="No matching reports" description="There are no triage reports matching the current filter." /></div>
           ) : (
-            <div className="divide-y divide-slate-100">
-              {filteredRequests.map((request) => (
-                <article key={request.id} className="flex flex-col justify-between gap-4 p-5 hover:bg-slate-50 md:flex-row md:items-center">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex flex-wrap items-center gap-3">
-                      {getPriorityBadge(request.priority)}
-                      <div className="flex items-center gap-1.5 text-sm font-semibold text-slate-900">
-                        <User className="h-4 w-4 text-slate-500" aria-hidden="true" />
-                        Patient ID {request.patient_id}
+            <div className="flex flex-col xl:flex-row divide-y xl:divide-y-0 xl:divide-x divide-slate-100 min-h-[500px]">
+              <div className={`flex-1 overflow-y-auto max-h-[600px] ${selectedRequestId ? 'xl:w-1/3 xl:flex-none' : 'w-full'}`}>
+                <div className="divide-y divide-slate-100">
+                  {filteredRequests.map((request) => (
+                    <button 
+                      key={request.id} 
+                      onClick={() => setSelectedRequestId(request.id)}
+                      className={`w-full text-left flex flex-col justify-between gap-2 p-4 hover:bg-slate-50 transition-colors ${selectedRequestId === request.id ? 'bg-blue-50/50 border-l-4 border-l-blue-600' : 'border-l-4 border-l-transparent'}`}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        {getPriorityBadge(request.priority)}
+                        {getStatusBadge(request.status)}
                       </div>
-                      {getStatusBadge(request.status)}
+                      <p className="text-sm font-medium text-slate-900 line-clamp-2">“{request.symptoms}”</p>
+                      <div className="text-[11px] font-medium text-slate-500">Patient {request.patient_id} • {new Date(request.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              {selectedRequest && (
+                <div className="flex-1 p-6 bg-slate-50/30 overflow-y-auto">
+                  <div className="glass-panel p-6 rounded-2xl mb-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-lg font-bold text-slate-900">Triage Detail</h3>
+                      <Button variant="ghost" size="sm" onClick={() => setSelectedRequestId(null)}>Close</Button>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium text-slate-900">“{request.symptoms}”</p>
-                      {request.ai_reasoning ? (
-                        <p className="mt-2 border-l-2 border-blue-200 pl-3 text-xs leading-5 text-slate-600">
-                          <span className="font-semibold text-slate-800">Automated triage rationale:</span> {request.ai_reasoning}
-                        </p>
-                      ) : null}
-                      {request.disclaimer ? <p className="mt-2 text-xs leading-5 text-slate-600">{request.disclaimer}</p> : null}
+                    <div className="space-y-4">
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">Symptoms Reported</p>
+                        <p className="text-base text-slate-900 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">“{selectedRequest.symptoms}”</p>
+                      </div>
+                      
+                      {selectedRequest.ai_reasoning && (
+                        <div className="bg-blue-50/80 p-4 rounded-xl border border-blue-100">
+                           <p className="text-xs text-blue-700 uppercase tracking-wider font-semibold flex items-center gap-1.5 mb-2">
+                             <span className="text-base">✨</span> Automated Rationale
+                           </p>
+                           <p className="text-sm text-blue-900 leading-relaxed">{selectedRequest.ai_reasoning}</p>
+                        </div>
+                      )}
+                      
+                      {selectedRequest.disclaimer && (
+                        <p className="text-xs leading-5 text-slate-500 italic">{selectedRequest.disclaimer}</p>
+                      )}
                     </div>
-                    <div className="text-[11px] font-medium uppercase tracking-wider text-slate-500">Submitted {new Date(request.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
                   </div>
-                  {normalized(request.status) !== 'resolved' ? (
-                    <div className="flex flex-wrap items-center gap-2 md:border-l md:border-slate-100 md:pl-4">
-                      <Button variant="outline" size="sm" onClick={() => updateStatus(request.id, 'Under Review')} disabled={normalized(request.status) === 'under review'}>Mark under review</Button>
-                      <Button size="sm" onClick={() => updateStatus(request.id, 'Resolved')} className="bg-emerald-700 text-white hover:bg-emerald-800">Mark resolved</Button>
+                  
+                  {normalized(selectedRequest.status) !== 'resolved' && (
+                    <div className="flex items-center gap-3">
+                      <Button variant="outline" onClick={() => updateStatus(selectedRequest.id, 'Under Review')} disabled={normalized(selectedRequest.status) === 'under review'}>Mark under review</Button>
+                      <Button onClick={() => updateStatus(selectedRequest.id, 'Resolved')} className="bg-emerald-700 text-white hover:bg-emerald-800">Mark resolved</Button>
                     </div>
-                  ) : null}
-                </article>
-              ))}
+                  )}
+                </div>
+              )}
             </div>
           )}
         </CardContent>
