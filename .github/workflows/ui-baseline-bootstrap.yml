@@ -1,0 +1,140 @@
+name: UI baseline bootstrap
+
+on:
+  push:
+    branches: ['ui/production-readiness-phases-1-5']
+
+permissions:
+  contents: write
+
+jobs:
+  bootstrap:
+    if: ${{ !contains(github.event.head_commit.message, '[ui-baseline-bootstrap]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: medflow
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: medflow_ui
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medflow -d medflow_ui"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      TESTING: "True"
+      ENV: test
+      DATABASE_URL: postgresql://medflow:password@127.0.0.1:5432/medflow_ui
+      SECRET_KEY: ui_validation_secret_key
+      SUPABASE_URL: http://127.0.0.1:8000
+      SUPABASE_SERVICE_ROLE_KEY: dummy_key
+      SUPABASE_STORAGE_BUCKET: medflow-bucket
+      PATIENT_URL: http://127.0.0.1:5174
+      DOCTOR_URL: http://127.0.0.1:5175
+      ADMIN_URL: http://127.0.0.1:5176
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.11'
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+
+      - name: Generate pinned UI test lockfile
+        run: npm install --prefix ui-tests --package-lock-only --ignore-scripts
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          npm ci --prefix frontend-shared
+          npm ci --prefix patient-app
+          npm ci --prefix doctor-portal
+          npm ci --prefix admin-portal
+          npm ci --prefix ui-tests
+          npx --prefix ui-tests playwright install --with-deps chromium
+
+      - name: Provision database roles and seed
+        run: |
+          python - <<'PY'
+          import os
+          import psycopg2
+          connection = psycopg2.connect(os.environ['DATABASE_URL'])
+          connection.autocommit = True
+          with connection.cursor() as cursor:
+              cursor.execute("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'anon') THEN CREATE ROLE anon NOLOGIN; END IF; END $$;")
+              cursor.execute("DO $$ BEGIN IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'authenticated') THEN CREATE ROLE authenticated NOLOGIN; END IF; END $$;")
+              cursor.execute("GRANT USAGE ON SCHEMA public TO anon, authenticated")
+              cursor.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO anon, authenticated")
+              cursor.execute("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO anon, authenticated")
+          connection.close()
+          PY
+          cd backend
+          python -m scripts.seed
+
+      - name: Start application stack
+        run: |
+          (cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8080) > "$RUNNER_TEMP/ui-api.log" 2>&1 &
+          npm run dev --prefix patient-app -- --host 127.0.0.1 > "$RUNNER_TEMP/patient-ui.log" 2>&1 &
+          npm run dev --prefix doctor-portal -- --host 127.0.0.1 > "$RUNNER_TEMP/doctor-ui.log" 2>&1 &
+          npm run dev --prefix admin-portal -- --host 127.0.0.1 > "$RUNNER_TEMP/admin-ui.log" 2>&1 &
+
+      - name: Wait for stack
+        run: |
+          python - <<'PY'
+          import time
+          import httpx
+          pending = {
+              'http://127.0.0.1:8080/ready',
+              'http://127.0.0.1:5174/login',
+              'http://127.0.0.1:5175/login',
+              'http://127.0.0.1:5176/login',
+          }
+          deadline = time.time() + 60
+          while pending and time.time() < deadline:
+              for url in list(pending):
+                  try:
+                      if httpx.get(url, timeout=2).status_code < 500:
+                          pending.remove(url)
+                  except httpx.HTTPError:
+                      pass
+              time.sleep(1)
+          if pending:
+              raise SystemExit(f'Application stack did not become ready: {sorted(pending)}')
+          PY
+
+      - name: Generate Chromium Linux visual baselines
+        run: |
+          cd ui-tests
+          npx playwright test tests/visual.spec.ts --update-snapshots
+
+      - name: Commit lockfile and baselines, remove bootstrap workflow
+        run: |
+          rm .github/workflows/ui-baseline-bootstrap.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add ui-tests/package-lock.json ui-tests/tests/visual.spec.ts-snapshots .github/workflows/ui-baseline-bootstrap.yml
+          if git diff --cached --quiet; then
+            echo "No baseline changes to commit"
+            exit 0
+          fi
+          git commit -m "test(ui): pin Playwright lockfile and visual baselines [ui-baseline-bootstrap]"
+          git push origin HEAD:ui/production-readiness-phases-1-5
+
+      - name: Print application logs on failure
+        if: failure()
+        run: |
+          for file in "$RUNNER_TEMP/ui-api.log" "$RUNNER_TEMP/patient-ui.log" "$RUNNER_TEMP/doctor-ui.log" "$RUNNER_TEMP/admin-ui.log"; do
+            echo "===== $file ====="
+            cat "$file" || true
+          done
