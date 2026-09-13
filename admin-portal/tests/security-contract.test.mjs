@@ -18,6 +18,16 @@ test('API client keeps access tokens memory-only and refresh-cookie backed', () 
   assert.doesNotMatch(source, /localStorage\.setItem\(\s*['"]token['"]/);
 });
 
+test('API client uses same-origin fallback so Vite can proxy local admin requests', () => {
+  const source = read('src/lib/api.ts');
+  const viteConfig = read('vite.config.ts');
+
+  assert.match(source, /const API_BASE_URL = import\.meta\.env\.VITE_API_BASE_URL \|\| '';/);
+  assert.doesNotMatch(source, /localhost:8000/);
+  assert.match(viteConfig, /'\/api'/);
+  assert.match(viteConfig, /localhost:8080/);
+});
+
 test('protected routes bootstrap authenticated state through ensureSession', () => {
   const source = read('src/App.tsx');
 
