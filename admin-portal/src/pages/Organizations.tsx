@@ -1,11 +1,43 @@
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Building, CheckCircle2, Pencil, Plus, Search, XCircle } from 'lucide-react';
+import { Button } from '@shared/ui/Button';
+import { Dialog } from '@shared/ui/Dialog';
+import { FeedbackState } from '@shared/ui/FeedbackState';
+import { FormField } from '@shared/ui/FormField';
+import { Input } from '@shared/ui/Input';
+import { ResponsiveTable } from '@shared/ui/ResponsiveTable';
 import { api } from '../lib/api';
-import { Building, Plus, Search, CheckCircle2, XCircle, Pencil } from 'lucide-react';
+
+interface Organization {
+  id: number;
+  name: string;
+  address?: string | null;
+  contact_info?: string | null;
+  is_active: boolean;
+}
+
+interface StoredAdminUser {
+  role?: string;
+  system_role?: string;
+}
+
+function readStoredUser(): StoredAdminUser {
+  try { return JSON.parse(localStorage.getItem('user') || '{}') as StoredAdminUser; }
+  catch { return {}; }
+}
+
+function getApiDetail(error: unknown, fallback: string) {
+  if (typeof error === 'object' && error !== null && 'response' in error) {
+    const detail = (error as { response?: { data?: { detail?: string } } }).response?.data?.detail;
+    if (detail) return detail;
+  }
+  return fallback;
+}
 
 export default function Organizations() {
-  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showModal, setShowModal] = useState(false);
+  const [showDialog, setShowDialog] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
@@ -15,63 +47,163 @@ export default function Organizations() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const isPlatformAdmin = user.role === 'platform_admin';
+  const user = useMemo(() => readStoredUser(), []);
+  const isPlatformAdmin = user.system_role === 'platform_admin' || user.role === 'platform_admin';
 
-  useEffect(() => { fetchOrgs(); }, []);
-
-  const fetchOrgs = async () => {
+  const fetchOrganizations = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/api/hospitals');
-      setOrganizations(res.data || []);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load organizations');
-    } finally { setLoading(false); }
-  };
+      const response = await api.get('/api/hospitals');
+      setOrganizations((response.data || []) as Organization[]);
+      setError('');
+    } catch (requestError: unknown) {
+      setError(getApiDetail(requestError, 'Failed to load organizations'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    queueMicrotask(() => { void fetchOrganizations(); });
+  }, [fetchOrganizations]);
 
   const openCreate = () => {
-    setEditingId(null); setName(''); setAddress(''); setContactInfo(''); setIsActive(true); setError(''); setShowModal(true);
+    setEditingId(null);
+    setName('');
+    setAddress('');
+    setContactInfo('');
+    setIsActive(true);
+    setError('');
+    setShowDialog(true);
   };
 
-  const openEdit = (org: any) => {
-    setEditingId(org.id); setName(org.name || ''); setAddress(org.address || ''); setContactInfo(org.contact_info || ''); setIsActive(Boolean(org.is_active)); setError(''); setShowModal(true);
+  const openEdit = (organization: Organization) => {
+    setEditingId(organization.id);
+    setName(organization.name || '');
+    setAddress(organization.address || '');
+    setContactInfo(organization.contact_info || '');
+    setIsActive(Boolean(organization.is_active));
+    setError('');
+    setShowDialog(true);
   };
 
-  const handleSave = async () => {
-    if (!name.trim()) { setError('Organization name is required'); return; }
-    setSaving(true); setError('');
+  const handleSave = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setError('Organization name is required');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    const payload = {
+      name: name.trim(),
+      address: address.trim() || null,
+      contact_info: contactInfo.trim() || null,
+      is_active: isActive,
+    };
+
     try {
-      if (editingId) {
-        await api.put(`/api/admin/organization/${editingId}`, { name: name.trim(), address: address || null, contact_info: contactInfo || null, is_active: isActive });
-      } else {
-        await api.post('/api/admin/organization', { name: name.trim(), address: address || null, contact_info: contactInfo || null, is_active: isActive });
-      }
-      setShowModal(false); await fetchOrgs();
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to save organization');
-    } finally { setSaving(false); }
+      if (editingId) await api.put(`/api/admin/organization/${editingId}`, payload);
+      else await api.post('/api/admin/organization', payload);
+      setShowDialog(false);
+      await fetchOrganizations();
+    } catch (requestError: unknown) {
+      setError(getApiDetail(requestError, 'Failed to save organization'));
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const filteredOrganizations = organizations.filter(org =>
-    org.name?.toLowerCase().includes(searchTerm.toLowerCase()) || String(org.id).includes(searchTerm)
-  );
+  const filteredOrganizations = organizations.filter((organization) => {
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return true;
+    return organization.name.toLowerCase().includes(query)
+      || (organization.address || '').toLowerCase().includes(query)
+      || String(organization.id).includes(query);
+  });
 
   if (!isPlatformAdmin) {
-    return <div className="p-12 text-center flex flex-col items-center bg-white rounded-2xl border border-slate-200 shadow-sm mt-8"><Building className="h-12 w-12 text-slate-300 mb-4" /><h3 className="text-lg font-bold text-slate-900">Access Denied</h3><p className="text-slate-500 mt-2 max-w-md">Only Platform Administrators can manage organizations.</p></div>;
+    return <FeedbackState tone="error" title="Organization management unavailable" message="Only platform administrators can provision or edit organizations." />;
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between items-end gap-4"><div><h2 className="text-2xl font-bold text-slate-900 tracking-tight">Organizations</h2><p className="text-slate-500 mt-1 font-medium">Manage hospitals and clinical networks.</p></div><button onClick={openCreate} className="px-4 py-2.5 bg-blue-600 text-white font-medium text-sm rounded-xl hover:bg-blue-700 transition-colors shadow-sm shadow-blue-500/20"><span className="flex items-center gap-2"><Plus className="h-4 w-4" />Provision Organization</span></button></div>
-      {error && !showModal && <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-sm text-red-700">{error}</div>}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-slate-200 bg-slate-50/50"><div className="relative w-full max-w-md"><div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none"><Search className="h-4 w-4 text-slate-400" /></div><input type="text" placeholder="Search organizations..." value={searchTerm} onChange={e => setSearchTerm(e.target.value)} className="w-full !pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" /></div></div>
-        <div className="overflow-x-auto"><table className="w-full text-left border-collapse"><thead><tr className="bg-slate-50/80 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold"><th className="p-4 pl-6">Name</th><th className="p-4">Address</th><th className="p-4">Status</th><th className="p-4 pr-6 text-right">Actions</th></tr></thead><tbody className="divide-y divide-slate-100">
-          {loading ? <tr><td colSpan={4} className="p-12 text-center">Loading...</td></tr> : filteredOrganizations.length === 0 ? <tr><td colSpan={4} className="p-12 text-center text-slate-500">No organizations found.</td></tr> : filteredOrganizations.map(org => <tr key={org.id} className="hover:bg-slate-50/50 transition-colors"><td className="p-4 pl-6"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-blue-100 text-blue-700 font-bold flex items-center justify-center">{org.name?.charAt(0) || '?'}</div><div><div className="font-medium text-slate-900">{org.name}</div><div className="text-xs text-slate-500">ID: {org.id}</div></div></div></td><td className="p-4 text-sm text-slate-500">{org.address || '—'}</td><td className="p-4">{org.is_active ? <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200"><CheckCircle2 className="h-3.5 w-3.5" />Active</span> : <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-red-50 text-red-700 border border-red-200"><XCircle className="h-3.5 w-3.5" />Inactive</span>}</td><td className="p-4 pr-6 text-right"><button onClick={() => openEdit(org)} className="inline-flex items-center gap-1.5 text-sm text-blue-600 hover:text-blue-800 font-medium"><Pencil className="h-3.5 w-3.5" />Edit</button></td></tr>)}
-        </tbody></table></div>
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Platform directory</p>
+          <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">Organizations</h2>
+          <p className="mt-2 text-sm text-slate-600">Provision hospitals and clinical networks using authoritative server records.</p>
+        </div>
+        <Button type="button" onClick={openCreate} className="gap-2 self-start sm:self-auto"><Plus className="h-4 w-4" aria-hidden="true" />Provision organization</Button>
+      </header>
+
+      {error && !showDialog ? <FeedbackState tone="error" title="Organization request failed" message={error} compact /> : null}
+
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+        <label htmlFor="organization-search" className="sr-only">Search organizations</label>
+        <Input id="organization-search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search by name, address, or ID" className="pl-10" />
       </div>
-      {showModal && <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4"><div className="bg-white rounded-2xl w-full max-w-md p-6 shadow-xl"><h3 className="text-xl font-bold text-slate-900 mb-4">{editingId ? 'Edit Organization' : 'Provision Organization'}</h3>{error && <div className="mb-4 text-red-600 text-sm font-medium">{error}</div>}<div className="space-y-4"><div><label className="block text-sm font-medium text-slate-700 mb-1">Organization Name</label><input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-2 border border-slate-200 rounded-xl" /></div><div><label className="block text-sm font-medium text-slate-700 mb-1">Address</label><input type="text" value={address} onChange={e => setAddress(e.target.value)} className="w-full px-4 py-2 border border-slate-200 rounded-xl" /></div><div><label className="block text-sm font-medium text-slate-700 mb-1">Contact Information</label><input type="text" value={contactInfo} onChange={e => setContactInfo(e.target.value)} className="w-full px-4 py-2 border border-slate-200 rounded-xl" /></div><label className="flex items-center gap-2 text-sm font-medium text-slate-700"><input type="checkbox" checked={isActive} onChange={e => setIsActive(e.target.checked)} /> Active</label></div><div className="mt-6 flex justify-end gap-3"><button onClick={() => setShowModal(false)} className="px-4 py-2 text-slate-600 font-medium hover:bg-slate-100 rounded-xl">Cancel</button><button disabled={saving} onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving...' : editingId ? 'Save Changes' : 'Provision'}</button></div></div></div>}
+
+      {loading ? (
+        <FeedbackState tone="loading" title="Loading organizations" message="Retrieving current organization records." />
+      ) : filteredOrganizations.length === 0 ? (
+        <FeedbackState tone="empty" title="No organizations found" message={searchTerm ? 'Try a different search term.' : 'No organizations have been provisioned yet.'} />
+      ) : (
+        <ResponsiveTable label="Organizations table">
+          <table className="w-full border-collapse text-left">
+            <thead>
+              <tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600">
+                <th scope="col" className="p-4 pl-6">Organization</th>
+                <th scope="col" className="p-4">Address</th>
+                <th scope="col" className="p-4">Status</th>
+                <th scope="col" className="p-4 pr-6 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredOrganizations.map((organization) => (
+                <tr key={organization.id} className="hover:bg-slate-50/70">
+                  <td className="p-4 pl-6">
+                    <div className="font-semibold text-slate-950">{organization.name}</div>
+                    <div className="mt-1 text-xs text-slate-500">Organization ID {organization.id}</div>
+                  </td>
+                  <td className="p-4 text-sm text-slate-600">{organization.address || 'Not provided'}</td>
+                  <td className="p-4">
+                    {organization.is_active ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800"><CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />Active</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-800"><XCircle className="h-3.5 w-3.5" aria-hidden="true" />Inactive</span>
+                    )}
+                  </td>
+                  <td className="p-4 pr-6 text-right">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => openEdit(organization)} className="gap-1.5"><Pencil className="h-4 w-4" aria-hidden="true" />Edit</Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ResponsiveTable>
+      )}
+
+      <Dialog
+        open={showDialog}
+        onOpenChange={setShowDialog}
+        title={editingId ? 'Edit organization' : 'Provision organization'}
+        description="Organization state affects administrative and clinical membership context."
+        footer={<div className="flex justify-end gap-3"><Button type="button" variant="outline" onClick={() => setShowDialog(false)}>Cancel</Button><Button type="submit" form="organization-form" disabled={saving}>{saving ? 'Saving…' : editingId ? 'Save changes' : 'Provision'}</Button></div>}
+      >
+        {error ? <div className="mb-4"><FeedbackState tone="error" title="Unable to save organization" message={error} compact /></div> : null}
+        <form id="organization-form" onSubmit={handleSave} className="space-y-4">
+          <FormField label="Organization name" htmlFor="organization-name"><Input id="organization-name" value={name} onChange={(event) => setName(event.target.value)} required data-autofocus /></FormField>
+          <FormField label="Address" htmlFor="organization-address"><Input id="organization-address" value={address} onChange={(event) => setAddress(event.target.value)} /></FormField>
+          <FormField label="Contact information" htmlFor="organization-contact"><Input id="organization-contact" value={contactInfo} onChange={(event) => setContactInfo(event.target.value)} /></FormField>
+          <label className="flex min-h-11 items-center gap-3 rounded-xl border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700">
+            <input type="checkbox" checked={isActive} onChange={(event) => setIsActive(event.target.checked)} className="h-5 w-5" />
+            Organization is active
+          </label>
+        </form>
+      </Dialog>
     </div>
   );
 }
