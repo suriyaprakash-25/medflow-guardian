@@ -1,211 +1,175 @@
-import React, { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, Download, Search, ShieldCheck, ShieldX } from 'lucide-react';
+import { Button } from '@shared/ui/Button';
+import { FeedbackState } from '@shared/ui/FeedbackState';
+import { Input } from '@shared/ui/Input';
+import { ResponsiveTable } from '@shared/ui/ResponsiveTable';
 import { api } from '../lib/api';
-import { ShieldAlert, Database, Search, Filter, ShieldCheck, ShieldX, ChevronDown, User, Hash, FileJson } from 'lucide-react';
+
+interface AuditRecord {
+  id: number;
+  actor_id: number;
+  actor_role: string;
+  organization_id?: number | null;
+  patient_id?: number | null;
+  operation: string;
+  resource_type: string;
+  resource_id?: string | null;
+  purpose?: string | null;
+  request_id?: string | null;
+  correlation_id?: string | null;
+  authorization_id?: string | null;
+  consent_id?: number | null;
+  consent_state_id?: number | null;
+  policy_version?: number | null;
+  enforcement_point?: string | null;
+  decision: 'ALLOW' | 'DENY';
+  denial_reason?: string | null;
+  metadata_json?: string | null;
+  timestamp: string;
+}
+
+interface StoredAdminUser {
+  role?: string;
+  system_role?: string;
+  memberships?: Array<{ hospital_id?: number; hospital_name?: string }>;
+}
+
+function readStoredUser(): StoredAdminUser {
+  try { return JSON.parse(localStorage.getItem('user') || '{}') as StoredAdminUser; }
+  catch { return {}; }
+}
+
+function metadataText(raw?: string | null) {
+  if (!raw) return '// No additional metadata';
+  try { return JSON.stringify(JSON.parse(raw), null, 2); }
+  catch { return raw; }
+}
+
+function csvCell(value: unknown) {
+  const text = value === null || value === undefined ? '' : String(value);
+  return `"${text.replaceAll('"', '""')}"`;
+}
 
 export default function Audit() {
-  const [logs, setLogs] = useState<any[]>([]);
+  const user = useMemo(() => readStoredUser(), []);
+  const isPlatformAdmin = user.system_role === 'platform_admin' || user.role === 'platform_admin';
+  const orgId = isPlatformAdmin ? undefined : user.memberships?.[0]?.hospital_id;
+  const scopeLabel = isPlatformAdmin ? 'Platform scope' : user.memberships?.[0]?.hospital_name || (orgId ? `Organization ${orgId}` : 'Organization scope');
+
+  const [logs, setLogs] = useState<AuditRecord[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [decisionFilter, setDecisionFilter] = useState<'all' | 'ALLOW' | 'DENY'>('all');
 
-  const user = JSON.parse(localStorage.getItem('user') || '{}');
-  const orgId = user.role === 'platform_admin' ? '' : user.memberships?.[0]?.hospital_id;
-
-  useEffect(() => {
-    const fetchLogs = async () => {
-      try {
-        const res = await api.get('/api/admin/audit', {
-          params: { hospital_id: orgId, limit: 100 }
-        });
-        setLogs(res.data.items);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchLogs();
+  const fetchLogs = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.get('/api/admin/audit', {
+        params: { ...(orgId ? { hospital_id: orgId } : {}), limit: 100 },
+      });
+      setLogs((response.data.items || []) as AuditRecord[]);
+      setTotal(Number(response.data.total || 0));
+    } catch (requestError: unknown) {
+      const detail = typeof requestError === 'object' && requestError !== null && 'response' in requestError
+        ? (requestError as { response?: { data?: { detail?: string } } }).response?.data?.detail
+        : undefined;
+      setError(detail || 'Unable to load the authorization audit trail.');
+      setLogs([]);
+    } finally {
+      setLoading(false);
+    }
   }, [orgId]);
 
-  const toggleExpand = (id: number) => {
-    setExpandedId(expandedId === id ? null : id);
+  useEffect(() => {
+    queueMicrotask(() => { void fetchLogs(); });
+  }, [fetchLogs]);
+
+  const filteredLogs = logs.filter((log) => {
+    if (decisionFilter !== 'all' && log.decision !== decisionFilter) return false;
+    const query = searchTerm.trim().toLowerCase();
+    if (!query) return true;
+    return [log.operation, log.resource_type, log.actor_role, log.actor_id, log.resource_id, log.denial_reason, log.purpose, log.request_id, log.correlation_id]
+      .some((value) => value !== null && value !== undefined && String(value).toLowerCase().includes(query));
+  });
+
+  const exportLoadedCsv = () => {
+    const headers = ['id', 'timestamp', 'decision', 'operation', 'resource_type', 'resource_id', 'actor_role', 'actor_id', 'organization_id', 'patient_id', 'purpose', 'denial_reason', 'authorization_id', 'consent_id', 'consent_state_id', 'policy_version', 'enforcement_point'];
+    const rows = filteredLogs.map((log) => headers.map((key) => csvCell(log[key as keyof AuditRecord])).join(','));
+    const blob = new Blob([[headers.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `medflow-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+    <div className="space-y-6 animate-in fade-in duration-300">
+      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Security Audit Trail</h2>
-          <p className="text-slate-500 mt-1 font-medium">Immutable ledger of all authorization decisions and system access.</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{scopeLabel}</p>
+          <h2 className="mt-2 text-2xl font-bold tracking-tight text-slate-950">Security audit trail</h2>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Authorization decisions recorded by the server. This view does not claim realtime health or completeness beyond the API response.</p>
         </div>
-        <div className="flex gap-3">
-            <button className="px-4 py-2.5 bg-white text-slate-700 font-medium text-sm rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors shadow-sm flex items-center gap-2">
-            <Filter className="h-4 w-4" /> Filter Logs
-            </button>
-            <button className="px-4 py-2.5 bg-slate-900 text-white font-medium text-sm rounded-xl hover:bg-slate-800 transition-colors shadow-sm flex items-center gap-2">
-            <Database className="h-4 w-4" /> Export CSV
-            </button>
-        </div>
-      </div>
+        <Button type="button" variant="outline" className="gap-2 self-start lg:self-auto" onClick={exportLoadedCsv} disabled={filteredLogs.length === 0}>
+          <Download className="h-4 w-4" aria-hidden="true" />Export visible records
+        </Button>
+      </header>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col">
-        {/* Toolbar */}
-        <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="relative w-full max-w-md">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                    <Search className="h-4 w-4 text-slate-400" />
-                </div>
-                <input
-                    type="text"
-                    placeholder="Search operations or actors..."
-                    className="w-full !pl-10 pr-4 py-2 border border-slate-200 rounded-xl bg-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all placeholder:text-slate-400"
-                />
-            </div>
-            <div className="text-sm font-medium text-slate-500 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                Live Recording Active
-            </div>
-        </div>
+      {error ? <FeedbackState tone="error" title="Audit trail unavailable" message={error} action={<Button type="button" onClick={() => void fetchLogs()}>Retry</Button>} /> : null}
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/80 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 font-bold">
-                <th className="p-4 pl-6 font-semibold">Event</th>
-                <th className="p-4 font-semibold">Actor</th>
-                <th className="p-4 font-semibold">Resource</th>
-                <th className="p-4 font-semibold">Decision</th>
-                <th className="p-4 font-semibold text-right">Timestamp</th>
-                <th className="p-4 pr-6 w-10"></th>
-              </tr>
-            </thead>
+      <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" aria-label="Audit filters">
+        <div className="grid gap-4 md:grid-cols-[1fr_auto_auto] md:items-end">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-3.5 h-4 w-4 text-slate-400" aria-hidden="true" />
+            <label htmlFor="audit-search" className="sr-only">Search audit records</label>
+            <Input id="audit-search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="Search operation, actor, resource or request" className="pl-10" />
+          </div>
+          <div>
+            <label htmlFor="audit-decision" className="mb-1 block text-xs font-semibold text-slate-600">Decision</label>
+            <select id="audit-decision" value={decisionFilter} onChange={(event) => setDecisionFilter(event.target.value as 'all' | 'ALLOW' | 'DENY')} className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2">
+              <option value="all">All decisions</option><option value="ALLOW">Allow</option><option value="DENY">Deny</option>
+            </select>
+          </div>
+          <p className="min-h-11 rounded-xl bg-slate-50 px-3 py-3 text-sm text-slate-600" role="status">Showing {filteredLogs.length} of {Math.min(logs.length, total)} loaded records · {total} total</p>
+        </div>
+      </section>
+
+      {loading ? (
+        <FeedbackState tone="loading" title="Loading audit records" message="Retrieving up to 100 recent server audit entries." />
+      ) : filteredLogs.length === 0 ? (
+        <FeedbackState tone="empty" title="No matching audit records" message={logs.length === 0 ? 'No audit records were returned for this scope.' : 'Adjust the search or decision filter.'} />
+      ) : (
+        <ResponsiveTable label="Authorization audit records">
+          <table className="w-full border-collapse text-left">
+            <thead><tr className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wider text-slate-600"><th scope="col" className="p-4 pl-6">Event</th><th scope="col" className="p-4">Actor</th><th scope="col" className="p-4">Resource</th><th scope="col" className="p-4">Decision</th><th scope="col" className="p-4 text-right">Timestamp</th><th scope="col" className="p-4 pr-6"><span className="sr-only">Details</span></th></tr></thead>
             <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                    <td colSpan={6} className="p-12 text-center">
-                        <div className="flex flex-col items-center justify-center gap-3">
-                            <div className="w-6 h-6 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
-                            <span className="text-sm font-medium text-slate-500">Loading audit trail...</span>
-                        </div>
-                    </td>
-                </tr>
-              ) : logs.length === 0 ? (
-                <tr>
-                    <td colSpan={6} className="p-12 text-center text-slate-500 font-medium">
-                        No audit logs available for this organization.
-                    </td>
-                </tr>
-              ) : (
-                logs.map((log) => (
-                  <React.Fragment key={log.id}>
-                    <tr 
-                        onClick={() => toggleExpand(log.id)}
-                        className={`hover:bg-slate-50/80 transition-colors cursor-pointer group ${expandedId === log.id ? 'bg-blue-50/30' : ''}`}
-                    >
-                      <td className="p-4 pl-6">
-                        <div className="flex items-center gap-3">
-                          <div className={`p-2 rounded-lg border shadow-sm ${log.decision === 'ALLOW' ? 'bg-emerald-50 border-emerald-100 text-emerald-600' : 'bg-red-50 border-red-100 text-red-600'}`}>
-                             {log.decision === 'ALLOW' ? <ShieldCheck className="h-5 w-5" /> : <ShieldX className="h-5 w-5" />}
-                          </div>
-                          <span className="font-bold text-slate-900 group-hover:text-blue-600 transition-colors">{log.operation}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <User className="h-4 w-4 text-slate-400" />
-                          <span className="text-sm font-medium text-slate-700">{log.actor_role}</span>
-                          <span className="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">ID:{log.actor_id}</span>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-center gap-2">
-                          <Database className="h-4 w-4 text-slate-400" />
-                          <span className="text-sm font-medium text-slate-700">{log.resource_type}</span>
-                          {log.resource_id && (
-                            <span className="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded font-mono border border-slate-200">ID:{log.resource_id}</span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex flex-col items-start gap-1">
-                            <span className={`inline-flex items-center text-xs font-bold uppercase tracking-wider px-2 py-0.5 rounded ${log.decision === 'ALLOW' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                            {log.decision}
-                            </span>
-                            {log.denial_reason && (
-                                <span className="text-xs text-red-500 font-medium truncate max-w-[150px]" title={log.denial_reason}>
-                                    {log.denial_reason}
-                                </span>
-                            )}
-                        </div>
-                      </td>
-                      <td className="p-4 text-right text-sm font-medium text-slate-500">
-                        {new Date(log.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </td>
-                      <td className="p-4 pr-6">
-                        <ChevronDown className={`h-5 w-5 text-slate-400 transition-transform ${expandedId === log.id ? 'rotate-180 text-blue-500' : 'group-hover:text-slate-600'}`} />
-                      </td>
-                    </tr>
-                    
-                    {/* Expanded Detail Panel */}
-                    {expandedId === log.id && (
-                        <tr>
-                            <td colSpan={6} className="p-0 border-b border-slate-200 bg-slate-50/50">
-                                <div className="px-8 py-6 grid grid-cols-1 md:grid-cols-3 gap-8 animate-in slide-in-from-top-2 fade-in duration-200">
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2"><Hash className="h-4 w-4" /> Context Data</h4>
-                                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3">
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Event ID</span>
-                                                <span className="text-slate-900 font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">{log.id}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Organization</span>
-                                                <span className="text-slate-900 font-medium">{log.organization_id || 'Global'}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Patient Scope</span>
-                                                <span className="text-slate-900 font-medium">{log.patient_id || 'N/A'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2"><ShieldAlert className="h-4 w-4" /> CAE State (Phase 5)</h4>
-                                        <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm space-y-3 opacity-70">
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Purpose</span>
-                                                <span className="text-slate-900">{log.purpose || 'Not specified'}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Consent State ID</span>
-                                                <span className="text-slate-900 font-mono text-xs">{log.consent_state_id || 'None'}</span>
-                                            </div>
-                                            <div className="flex justify-between text-sm">
-                                                <span className="text-slate-500 font-medium">Enforcement State</span>
-                                                <span className="text-slate-900 font-mono text-xs">{log.enforcement_state || 'None'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                    
-                                    <div className="space-y-4">
-                                        <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2"><FileJson className="h-4 w-4" /> Raw Metadata</h4>
-                                        <div className="bg-slate-900 rounded-xl p-4 shadow-inner overflow-x-auto h-[120px]">
-                                            <pre className="text-xs font-mono text-green-400">
-                                                {log.metadata_json ? JSON.stringify(JSON.parse(log.metadata_json), null, 2) : '// No metadata provided for this evaluation'}
-                                            </pre>
-                                        </div>
-                                    </div>
-                                </div>
-                            </td>
-                        </tr>
-                    )}
-                  </React.Fragment>
-                ))
-              )}
+              {filteredLogs.map((log) => {
+                const expanded = expandedId === log.id;
+                return [
+                  <tr key={`row-${log.id}`} className={expanded ? 'bg-blue-50/30' : 'hover:bg-slate-50/70'}>
+                    <td className="p-4 pl-6"><div className="flex items-center gap-3">{log.decision === 'ALLOW' ? <ShieldCheck className="h-5 w-5 text-emerald-700" aria-hidden="true" /> : <ShieldX className="h-5 w-5 text-rose-700" aria-hidden="true" />}<span className="font-semibold text-slate-950">{log.operation}</span></div></td>
+                    <td className="p-4 text-sm text-slate-700"><span className="font-medium">{log.actor_role}</span><span className="ml-2 text-xs text-slate-500">ID {log.actor_id}</span></td>
+                    <td className="p-4 text-sm text-slate-700">{log.resource_type}{log.resource_id ? <span className="ml-2 text-xs text-slate-500">ID {log.resource_id}</span> : null}</td>
+                    <td className="p-4"><span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${log.decision === 'ALLOW' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{log.decision}</span>{log.denial_reason ? <p className="mt-1 max-w-52 truncate text-xs text-rose-700" title={log.denial_reason}>{log.denial_reason}</p> : null}</td>
+                    <td className="p-4 text-right text-sm text-slate-600"><time dateTime={log.timestamp}>{new Date(log.timestamp).toLocaleString()}</time></td>
+                    <td className="p-4 pr-6 text-right"><Button type="button" variant="ghost" size="icon" aria-label={`${expanded ? 'Collapse' : 'Expand'} audit event ${log.id}`} aria-expanded={expanded} aria-controls={`audit-detail-${log.id}`} onClick={() => setExpandedId(expanded ? null : log.id)}><ChevronDown className={`h-5 w-5 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" /></Button></td>
+                  </tr>,
+                  expanded ? <tr key={`detail-${log.id}`} id={`audit-detail-${log.id}`}><td colSpan={6} className="border-b border-slate-200 bg-slate-50/60 p-5 sm:p-6"><div className="grid gap-5 lg:grid-cols-3"><dl className="rounded-xl border border-slate-200 bg-white p-4 text-sm"><dt className="font-semibold text-slate-950">Context</dt><dd className="mt-3 text-slate-600">Organization: {log.organization_id ?? 'Global'}</dd><dd className="mt-2 text-slate-600">Patient: {log.patient_id ?? 'Not applicable'}</dd><dd className="mt-2 text-slate-600">Purpose: {log.purpose || 'Not specified'}</dd><dd className="mt-2 text-slate-600">Request: {log.request_id || 'Not recorded'}</dd></dl><dl className="rounded-xl border border-slate-200 bg-white p-4 text-sm"><dt className="font-semibold text-slate-950">Authorization trace</dt><dd className="mt-3 text-slate-600">Authorization ID: {log.authorization_id || 'Not recorded'}</dd><dd className="mt-2 text-slate-600">Consent ID: {log.consent_id ?? 'Not applicable'}</dd><dd className="mt-2 text-slate-600">Consent state ID: {log.consent_state_id ?? 'Not applicable'}</dd><dd className="mt-2 text-slate-600">Policy version: {log.policy_version ?? 'Not recorded'}</dd><dd className="mt-2 text-slate-600">Enforcement point: {log.enforcement_point || 'Not recorded'}</dd></dl><div className="min-w-0"><p className="font-semibold text-slate-950">Additional metadata</p><pre className="mt-3 max-h-48 overflow-auto rounded-xl bg-slate-950 p-4 text-xs leading-5 text-emerald-300">{metadataText(log.metadata_json)}</pre></div></div></td></tr> : null,
+                ];
+              })}
             </tbody>
           </table>
-        </div>
-      </div>
+        </ResponsiveTable>
+      )}
     </div>
   );
 }
