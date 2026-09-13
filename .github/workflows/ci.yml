@@ -40,6 +40,13 @@ jobs:
     - name: Install backend dependencies needed by fixture exporters
       run: pip install -r backend/requirements.txt
     - name: Generate and externally validate supported FHIR R4 artifacts
+      env:
+        TESTING: "True"
+        ENV: test
+        DATABASE_URL: postgresql://unused:unused@127.0.0.1:5432/unused
+        SECRET_KEY: test_secret_key_fhir_export
+        SUPABASE_URL: http://127.0.0.1:8000
+        SUPABASE_SERVICE_ROLE_KEY: dummy_key
       run: |
         cd backend
         python -m scripts.export_fhir_capability

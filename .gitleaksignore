@@ -1,0 +1,3 @@
+# Legacy sample-only JWT value removed from backend/.env.example. If this value
+# was ever copied into a deployed environment, rotate that deployment secret.
+f1a8f8ff7a272f2065c61a4a02ad5ff333e2d72f:backend/.env.example:generic-api-key:26

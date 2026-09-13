@@ -1,0 +1,8 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Ignore only historically committed third-party virtualenv packages"
+paths = [
+  '''(^|/)backend/\.venv/''',
+]
