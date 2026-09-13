@@ -7,7 +7,6 @@ import { Badge } from '@shared/ui/Badge';
 import { ConfirmModal } from '@shared/ui/ConfirmModal';
 import { ShieldAlert, FileText, CheckCircle, XCircle, Building, Clock } from 'lucide-react';
 import { EmptyState } from '@shared/ui/EmptyState';
-import { toast } from 'react-hot-toast';
 export default function AccessRequests() {
   const { accessRequests, patientVisits, durations, setDurations, handleApproveAccess, handleRejectAccess } = usePatientContext();
 
@@ -37,8 +36,6 @@ export default function AccessRequests() {
     if (activeRequest) handleRejectAccess(activeRequest.id);
     setConfirmRejectId(null);
   };
-
-  console.log("AccessRequests Render - confirmApproveId:", confirmApproveId, "isOpen:", !!confirmApproveId);
 
   return (
     <div className="flex flex-col gap-6 animate-in fade-in duration-500">
@@ -96,12 +93,13 @@ export default function AccessRequests() {
                   </div>
 
                   <div className="pt-4 border-t border-slate-100 mt-auto">
-                    <p className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-slate-500" />
-                      Allow access for:
-                    </p>
+                    <label htmlFor={`grant-duration-${req.id}`} className="text-sm font-medium text-slate-700 mb-3 flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-slate-500" aria-hidden="true" />
+                      Allow access for
+                    </label>
                     <div className="flex flex-col sm:flex-row gap-3">
-                      <Select 
+                      <Select
+                        id={`grant-duration-${req.id}`}
                         value={duration} 
                         onChange={e => setDurations({...durations, [req.id]: parseInt(e.target.value)})}
                         className="bg-slate-50 sm:w-1/3"
@@ -115,10 +113,7 @@ export default function AccessRequests() {
                         <Button 
                           className="flex-1 flex flex-row items-center justify-center gap-2 text-white border-none whitespace-nowrap h-10 px-3" 
                           style={{ backgroundColor: '#10b981' }}
-                          onClick={() => {
-                            toast('Please confirm approval in the popup window.', { icon: 'ℹ️' });
-                            setConfirmApproveId(req.id);
-                          }}
+                          onClick={() => setConfirmApproveId(req.id)}
                         >
                           <CheckCircle className="h-4 w-4 shrink-0" />
                           <span>Approve</span>
@@ -126,10 +121,7 @@ export default function AccessRequests() {
                         <Button 
                           variant="outline" 
                           className="flex-1 flex flex-row items-center justify-center gap-2 text-slate-600 hover:text-red-600 hover:border-red-200 hover:bg-red-50 whitespace-nowrap h-10 px-3" 
-                          onClick={() => {
-                            toast('Please confirm rejection in the popup window.', { icon: 'ℹ️' });
-                            setConfirmRejectId(req.id);
-                          }}
+                          onClick={() => setConfirmRejectId(req.id)}
                         >
                           <XCircle className="h-4 w-4 shrink-0" />
                           <span>Reject</span>

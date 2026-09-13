@@ -3,7 +3,8 @@ import originalAxios from 'axios';
 import { api as axios } from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/websocket';
 import { useNavigate, Outlet, Link, useLocation, useOutletContext } from 'react-router-dom';
-import { Activity, FileText, Lock, History, User, Bell, LogOut, Menu, Calendar } from 'lucide-react';
+import { Activity, FileText, Lock, History, User, Bell, LogOut, Calendar } from 'lucide-react';
+import { ConnectionStatus } from '@shared/ui/ConnectionStatus';
 import { toast } from 'react-hot-toast';
 
 export interface TriageRequest {
@@ -334,10 +335,10 @@ export default function Layout() {
     }
     try {
       await axios.post('/api/triage/', { symptoms, hospital_id: parseInt(selectedHospitalId) }, { headers });
-      toast.success('Symptoms submitted successfully!');
+      toast.success('Symptoms submitted for clinician review.');
       setSymptoms('');
       setSelectedHospitalId('');
-      await fetchRequests(); // refresh immediately to show AI result
+      await fetchRequests(); // Refresh recorded triage-support status.
     } catch (error) {
       toast.error('Failed to submit symptoms.');
     } finally {
@@ -586,12 +587,7 @@ export default function Layout() {
         </div>
 
         <div className="p-4 border-t border-slate-800">
-          <div className="flex items-center gap-2 mb-4 px-2">
-            <div className={`w-2.5 h-2.5 rounded-full ${wsStatus === 'connected' ? 'bg-emerald-500' : (wsStatus === 'connecting' ? 'bg-amber-500' : 'bg-red-500')}`}></div>
-            <span className="text-xs text-slate-400 font-medium">
-              {wsStatus === 'connected' ? 'System Live' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline')}
-            </span>
-          </div>
+          <ConnectionStatus status={wsStatus} className="mb-4 px-2 text-slate-300" />
           <button 
             onClick={handleLogout} 
             className="flex w-full items-center justify-center gap-2 bg-transparent border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white px-4 py-2 rounded-md transition-colors text-sm font-medium"
@@ -606,9 +602,6 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <header className="bg-white border-b border-border px-6 py-4 flex items-center justify-between shrink-0 z-10 sticky top-0 shadow-sm">
           <div className="flex items-center gap-4">
-            <button className="md:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors">
-              <Menu className="h-5 w-5" />
-            </button>
             <div>
               <h1 className="m-0 text-xl font-semibold text-slate-900 tracking-tight">
                 {location.pathname === '/dashboard' ? 'Overview' : location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
@@ -620,25 +613,41 @@ export default function Layout() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => navigate('/notifications')} 
-              className="relative p-2 text-slate-500 hover:bg-slate-100 rounded-full transition-colors"
+            <button
+              type="button"
+              aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
+              onClick={() => navigate('/notifications')}
+              className="relative min-h-11 min-w-11 p-2 text-slate-600 hover:bg-slate-100 rounded-full transition-colors focus-visible:ring-2 focus-visible:ring-blue-600"
             >
               <Bell className="h-5 w-5" />
               {unreadCount > 0 && (
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-primary rounded-full ring-2 ring-white"></span>
               )}
             </button>
-            <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm border border-primary/20">
-              P
+            <div className="h-9 w-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-sm border border-primary/20" aria-label="Patient account">
+              {(patientProfile?.full_name || patientProfile?.email || 'Patient').trim().charAt(0).toUpperCase()}
             </div>
           </div>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">
+        <main id="patient-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8" tabIndex={-1}>
           <div className="mx-auto max-w-6xl">
             <Outlet context={contextValue} />
           </div>
         </main>
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Patient mobile navigation">
+          <div className="flex overflow-x-auto px-1">
+            {[
+              { path: '/dashboard', label: 'Overview', icon: Activity },
+              { path: '/appointments', label: 'Visits', icon: Calendar },
+              { path: '/documents', label: 'Records', icon: FileText },
+              { path: '/access-requests', label: 'Consent', icon: Lock },
+              { path: '/profile', label: 'Profile', icon: User },
+            ].map((item) => {
+              const Icon = item.icon; const active = location.pathname === item.path;
+              return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={`flex min-h-16 min-w-[5rem] flex-1 flex-col items-center justify-center gap-1 px-2 text-[11px] font-semibold ${active ? 'text-blue-800' : 'text-slate-600'}`}><Icon className="h-5 w-5" aria-hidden="true" />{item.label}</Link>;
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );

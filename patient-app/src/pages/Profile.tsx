@@ -251,7 +251,7 @@ export default function Profile() {
                       <div className="sm:w-1/3 bg-slate-50 rounded-lg p-4 border border-slate-100">
                         <div className="flex items-center gap-2 mb-2">
                           <Activity className="h-4 w-4 text-primary" />
-                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">AI Assessment</span>
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wide">Automated triage support</span>
                           <Badge className={`ml-auto ${
                             req.priority === 'high' ? 'bg-red-100 text-red-800' :
                             req.priority === 'medium' ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'

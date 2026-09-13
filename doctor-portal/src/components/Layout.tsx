@@ -3,11 +3,13 @@ import originalAxios from 'axios';
 import { api as axios } from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/websocket';
 import { useNavigate, Outlet, Link, useLocation } from 'react-router-dom';
-import { Activity, Users, User, FileText, Lock, Bell, LogOut, Menu, Shield, Calendar } from 'lucide-react';
+import { Activity, Users, User, FileText, Lock, Bell, LogOut, Shield, Calendar } from 'lucide-react';
+import { ConnectionStatus } from '@shared/ui/ConnectionStatus';
 import { toast } from 'react-hot-toast';
 
 export interface TriageRequest {
   id: number;
+  patient_id: number;
   symptoms: string;
   status: string;
   priority: string | null;
@@ -751,17 +753,7 @@ export default function Layout() {
         </nav>
 
         <div className="p-4 border-t border-slate-800/50 bg-slate-900/50">
-          <div className="flex items-center gap-2 mb-4 px-2">
-            <div className="relative flex h-2.5 w-2.5">
-              {wsStatus === 'connected' && (
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              )}
-              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${wsStatus === 'connected' ? 'bg-emerald-500' : (wsStatus === 'connecting' ? 'bg-amber-500' : 'bg-rose-500')}`} />
-            </div>
-            <span className="text-xs text-slate-400 font-medium tracking-wide">
-              {wsStatus === 'connected' ? 'System Live & Synced' : (wsStatus === 'connecting' ? 'Connecting...' : 'Offline - Reconnecting')}
-            </span>
-          </div>
+          <ConnectionStatus status={wsStatus} className="mb-4 px-2 text-slate-300" />
           <button
             onClick={() => void handleLogout()}
             className="flex w-full items-center justify-center gap-2 bg-transparent border border-slate-700 text-slate-300 hover:bg-slate-800 hover:text-white px-4 py-2.5 rounded-lg transition-colors text-sm font-medium"
@@ -775,9 +767,6 @@ export default function Layout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center justify-between shrink-0 shadow-sm z-10 sticky top-0">
           <div className="flex items-center gap-4">
-            <button className="md:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors">
-              <Menu className="h-5 w-5" />
-            </button>
             <div>
               <h1 className="m-0 text-xl font-bold text-slate-900 tracking-tight">
                 {location.pathname.replace('/', '').replace('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())}
@@ -791,7 +780,7 @@ export default function Layout() {
                 <p className="text-sm font-semibold text-slate-900 leading-none">
                   Dr. {currentUser?.full_name || currentUser?.email || 'User'}
                 </p>
-                <p className="text-xs text-slate-500 mt-1 font-medium">General Hospital</p>
+                <p className="text-xs text-slate-500 mt-1 font-medium">Authenticated clinical workspace</p>
               </div>
               <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center border-2 border-white shadow-sm">
                 <User className="h-5 w-5 text-blue-600" />
@@ -800,11 +789,19 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8 bg-slate-50 relative">
+        <main id="doctor-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8 bg-slate-50 relative" tabIndex={-1}>
           <div className="mx-auto max-w-7xl animate-in fade-in duration-500">
             <Outlet context={contextValue} />
           </div>
         </main>
+        <nav className="safe-bottom fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur md:hidden" aria-label="Clinician mobile navigation">
+          <div className="flex overflow-x-auto px-1">
+            {navItems.map((item) => {
+              const Icon = item.icon; const active = location.pathname === item.path;
+              return <Link key={item.path} to={item.path} aria-current={active ? 'page' : undefined} className={`relative flex min-h-16 min-w-[5.25rem] flex-1 flex-col items-center justify-center gap-1 px-2 text-[11px] font-semibold ${active ? 'text-blue-800' : 'text-slate-600'}`}><Icon className="h-5 w-5" aria-hidden="true" />{item.label}{!!item.badge && <span className="absolute right-2 top-1 rounded-full bg-rose-700 px-1.5 text-[10px] text-white" aria-label={`${item.badge} unread`}>{item.badge}</span>}</Link>;
+            })}
+          </div>
+        </nav>
       </div>
     </div>
   );
