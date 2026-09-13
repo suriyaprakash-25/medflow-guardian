@@ -59,7 +59,7 @@ until an authorized external reviewer signs the release evidence.
 
 - [x] Add automated SAST, dependency, secret, and dynamic API security gates.
 - [x] Produce a scoped penetration-test plan and finding/remediation register.
-- [ ] Run the repeatable internal security suite and preserve CI results.
+- [x] Run the repeatable internal security suite and preserve CI results.
 - [ ] Commission an independent penetration test and remediate all release blockers.
 - [ ] Complete clinical safety, security, privacy, and operations sign-off.
 
