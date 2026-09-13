@@ -1,47 +1,70 @@
 DISCLAIMER = (
-    "⚠️ AI Assessment Only — Not a medical diagnosis. "
-    "This is a keyword-based prototype triage tool. "
-    "Always consult a qualified healthcare professional."
+    "Automated triage support only — not a diagnosis or treatment recommendation. "
+    "Priority is generated from deterministic symptom-keyword rules and may be incomplete. "
+    "A qualified clinician must review the report. If symptoms may be life-threatening, "
+    "seek emergency care immediately."
 )
 
 
 def analyze_symptoms(symptoms: str) -> dict:
-    """
-    Mock AI Triage Engine for Hackathon Prototype.
-    Returns deterministic priority and reasoning based on keyword matches.
+    """Return deterministic triage-support priority from configured keyword rules.
+
+    This function is intentionally not described as diagnostic AI. The output is a
+    screening aid for clinician review and must not be used to rule out urgency.
     """
     symptoms_lower = symptoms.lower()
-    
-    # Critical keywords
-    critical_keywords = ["chest pain", "heart", "stroke", "bleeding profusely", "can't breathe", "unconscious"]
+
+    critical_keywords = [
+        "chest pain",
+        "heart",
+        "stroke",
+        "bleeding profusely",
+        "can't breathe",
+        "unconscious",
+    ]
     if any(keyword in symptoms_lower for keyword in critical_keywords):
         return {
             "priority": "critical",
-            "ai_reasoning": "Detected critical keywords indicating potential life-threatening emergency.",
+            "ai_reasoning": (
+                "Configured keyword rules matched terms associated with potentially "
+                "urgent symptoms; prompt clinician review is required."
+            ),
             "disclaimer": DISCLAIMER,
         }
-        
-    # High keywords
-    high_keywords = ["severe headache", "blurred vision", "high fever", "broken bone", "vomiting blood"]
+
+    high_keywords = [
+        "severe headache",
+        "blurred vision",
+        "high fever",
+        "broken bone",
+        "vomiting blood",
+    ]
     if any(keyword in symptoms_lower for keyword in high_keywords):
         return {
             "priority": "high",
-            "ai_reasoning": "Detected high priority keywords requiring urgent attention.",
+            "ai_reasoning": (
+                "Configured keyword rules matched terms assigned to the high-priority "
+                "review queue; a clinician must determine actual urgency."
+            ),
             "disclaimer": DISCLAIMER,
         }
-        
-    # Medium keywords
+
     medium_keywords = ["fever", "pain", "sprain", "dizzy", "nausea"]
     if any(keyword in symptoms_lower for keyword in medium_keywords):
         return {
             "priority": "medium",
-            "ai_reasoning": "Detected moderate symptoms requiring evaluation.",
+            "ai_reasoning": (
+                "Configured keyword rules matched terms assigned to the medium-priority "
+                "review queue; this is not a clinical assessment."
+            ),
             "disclaimer": DISCLAIMER,
         }
-        
-    # Default to low
+
     return {
         "priority": "low",
-        "ai_reasoning": "Symptoms appear mild based on initial keyword analysis.",
+        "ai_reasoning": (
+            "No configured higher-priority keywords were matched. This does not mean "
+            "the symptoms are safe, mild, or non-urgent."
+        ),
         "disclaimer": DISCLAIMER,
     }
