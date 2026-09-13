@@ -20,7 +20,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    "ignoreDeprecations": "6.0",
+
+    "paths": {
+      "@shared/*": ["../frontend-shared/*"]
+    }
   },
-  "include": ["src"]
+  "include": ["src", "../frontend-shared"]
 }
