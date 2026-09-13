@@ -4,6 +4,8 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.models.user import User
 from app.models.consent import Consent, ConsentStatus, ConsentPolicyVersion, ConsentState
+from app.models.access import DocumentAccessGrant
+from datetime import datetime, timezone
 from app.schemas.consent import (
     ConsentCreate,
     ConsentTransition,
@@ -221,6 +223,17 @@ def transition_consent(
         reason=transition.reason,
     )
     db.add(new_state)
+    if target_status != ConsentStatus.ACTIVE.value:
+        db.query(DocumentAccessGrant).filter(
+            DocumentAccessGrant.consent_id == consent.id,
+            DocumentAccessGrant.status == "active",
+        ).update(
+            {
+                DocumentAccessGrant.status: "revoked",
+                DocumentAccessGrant.revoked_at: datetime.now(timezone.utc),
+            },
+            synchronize_session=False,
+        )
     db.commit()
     db.refresh(new_state)
     return new_state

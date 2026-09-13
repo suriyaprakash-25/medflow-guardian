@@ -1,0 +1,53 @@
+name: Production release validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: production
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.11"
+      - name: Run non-mutating production smoke checks
+        env:
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+          PATIENT_APP_URL: ${{ vars.PATIENT_APP_URL }}
+          DOCTOR_PORTAL_URL: ${{ vars.DOCTOR_PORTAL_URL }}
+          ADMIN_PORTAL_URL: ${{ vars.ADMIN_PORTAL_URL }}
+          OBSERVABILITY_TOKEN: ${{ secrets.OBSERVABILITY_TOKEN }}
+        run: |
+          test -n "$PRODUCTION_API_URL"
+          test -n "$PATIENT_APP_URL"
+          test -n "$DOCTOR_PORTAL_URL"
+          test -n "$ADMIN_PORTAL_URL"
+          python scripts/production_smoke.py \
+            --api-url "$PRODUCTION_API_URL" \
+            --frontend-url "$PATIENT_APP_URL" \
+            --frontend-url "$DOCTOR_PORTAL_URL" \
+            --frontend-url "$ADMIN_PORTAL_URL" \
+            --observability-token "$OBSERVABILITY_TOKEN"
+      - name: Run passive OWASP ZAP baseline
+        run: |
+          mkdir -p "$RUNNER_TEMP/zap"
+          docker run --rm --network host \
+            -v "$RUNNER_TEMP/zap:/zap/wrk:rw" \
+            ghcr.io/zaproxy/zaproxy:stable \
+            zap-baseline.py --auto -t "${{ vars.PRODUCTION_API_URL }}" \
+            -T 3 -r zap-baseline.html -J zap-baseline.json
+      - name: Upload production validation evidence
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.2
+        with:
+          name: production-validation-evidence
+          path: ${{ runner.temp }}/zap/
+          if-no-files-found: warn

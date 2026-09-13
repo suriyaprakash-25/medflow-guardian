@@ -14,6 +14,47 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  fhir-external-validator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Set up Python
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      with:
+        python-version: '3.11'
+    - name: Set up Java
+      uses: actions/setup-java@7a445ee88d4e23b52c33c825dad448d46c9b9d86 # v5.0.0
+      with:
+        distribution: temurin
+        java-version: '21'
+    - name: Cache HL7 validator and FHIR packages
+      uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v5.0.3
+      with:
+        path: |
+          ~/.cache/medflow-fhir
+          ~/.fhir/packages
+        key: fhir-validator-6.9.12-r4
+    - name: Install backend dependencies needed by fixture exporters
+      run: pip install -r backend/requirements.txt
+    - name: Generate and externally validate supported FHIR R4 artifacts
+      run: |
+        cd backend
+        python -m scripts.export_fhir_capability
+        python -m scripts.export_fhir_bundle_fixture
+        git diff --exit-code -- tests/fhir_validation/
+        python -m scripts.validate_fhir_external \
+          --validator-jar ~/.cache/medflow-fhir/validator_cli-6.9.12.jar
+    - name: Upload FHIR validator evidence
+      if: always()
+      uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.2
+      with:
+        name: fhir-validator-evidence
+        path: backend/build/fhir-validation/
+        if-no-files-found: error
+
   backend-test:
     runs-on: ubuntu-latest
     timeout-minutes: 35

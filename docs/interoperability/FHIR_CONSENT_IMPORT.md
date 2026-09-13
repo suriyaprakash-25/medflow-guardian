@@ -188,6 +188,18 @@ This phase does **not** claim complete FHIR Consent interoperability. Deferred i
 - nested permit/deny policy trees
 - FHIR actor/data/security-label constraints
 - terminology-service based purpose translation
-- complete FHIR profile/conformance validation
+- custom implementation-guide profiles beyond the declared base R4 profiles
+
+## Conformance gate
+
+The public `GET /api/interoperability/metadata` endpoint publishes the precise
+FHIR R4 `CapabilityStatement`. It deliberately does not claim standard CRUD,
+search, history, transaction, or Binary interactions because MedFlow exposes a
+constrained export operation and a custom Consent import route.
+
+CI runs the official HL7 validator CLI 6.9.12, checksum-pinned in
+`backend/scripts/validate_fhir_external.py`, against the generated
+CapabilityStatement and supported Consent fixture. Fatal/error outcomes fail
+the build; the validator OperationOutcome files are retained as CI artifacts.
 
 Those should be implemented in later interoperability/conformance phases rather than guessed in this importer.

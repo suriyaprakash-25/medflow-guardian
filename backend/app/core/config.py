@@ -10,8 +10,10 @@ load_dotenv()
 
 ENV = os.getenv("ENV", "development")
 SERVICE_ROLE = os.getenv("MEDFLOW_SERVICE_ROLE", "web").strip().lower()
-if SERVICE_ROLE not in {"web", "malware_worker"}:
-    raise ValueError("MEDFLOW_SERVICE_ROLE must be 'web' or 'malware_worker'")
+if SERVICE_ROLE not in {"web", "malware_worker", "retention_worker"}:
+    raise ValueError(
+        "MEDFLOW_SERVICE_ROLE must be 'web', 'malware_worker', or 'retention_worker'"
+    )
 
 
 def _parse_cors_origins(raw_values: list[str]) -> list[str]:
@@ -135,6 +137,12 @@ class Settings:
 
     TRUSTED_PROXY_CIDRS_RAW = os.getenv("TRUSTED_PROXY_CIDRS", "")
     TRUSTED_PROXY_CIDRS = _parse_trusted_proxy_cidrs(TRUSTED_PROXY_CIDRS_RAW)
+
+    OBSERVABILITY_TOKEN = os.getenv("OBSERVABILITY_TOKEN", "").strip()
+    if _web_production and len(OBSERVABILITY_TOKEN) < 32:
+        raise ValueError(
+            "CRITICAL: production OBSERVABILITY_TOKEN must be at least 32 characters"
+        )
 
     SUPABASE_URL = os.getenv("SUPABASE_URL")
     if not SUPABASE_URL:

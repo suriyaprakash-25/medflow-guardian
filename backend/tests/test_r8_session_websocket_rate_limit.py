@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from fastapi import Request
 from fastapi.testclient import TestClient
-from jose import jwt
+import jwt
 from starlette.websockets import WebSocketDisconnect
 
 from app.api.websockets import WS_AUTH_PROTOCOL, manager

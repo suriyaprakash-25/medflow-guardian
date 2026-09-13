@@ -18,7 +18,9 @@ REVIEWED_DELEGATES = {
     "clinical.py": {"_authorize_clinical_access("},
     "consent.py": {"_enforce_consent_write("},
     "interoperability.py": {"_import_canonical_fhir_consent("},
+    "privacy.py": {"_authorize("},
 }
+PUBLIC_ENDPOINTS = {"interoperability.py": {"fhir_capability_statement"}}
 
 
 def _route_functions(path: Path):
@@ -44,6 +46,8 @@ def test_every_resource_rest_endpoint_terminates_at_model_a():
             continue
         delegates = REVIEWED_DELEGATES.get(path.name, set())
         for function_name, source in _route_functions(path):
+            if function_name in PUBLIC_ENDPOINTS.get(path.name, set()):
+                continue
             if ".authorize(" in source:
                 continue
             if any(delegate in source for delegate in delegates):

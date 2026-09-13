@@ -226,5 +226,6 @@ def test_to_fhir_bundle_uses_collection_semantics():
     bundle = to_fhir_bundle([patient])
     assert bundle["resourceType"] == "Bundle"
     assert bundle["type"] == "collection"
-    assert bundle["total"] == 1
+    assert "total" not in bundle
+    assert bundle["entry"][0]["fullUrl"].endswith("/Patient/1")
     assert bundle["entry"][0]["resource"]["resourceType"] == "Patient"

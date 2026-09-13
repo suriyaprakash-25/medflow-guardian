@@ -43,6 +43,7 @@ def _production_subprocess_env(*, role: str) -> dict[str, str]:
             "CLAMAV_HOST": "127.0.0.1",
             "CLAMAV_PORT": "3310",
             "TRUSTED_PROXY_CIDRS": "",
+            "OBSERVABILITY_TOKEN": "o" * 32,
         }
     )
     return env
@@ -221,7 +222,12 @@ def test_render_blueprint_deploys_durable_malware_worker_and_required_scanner_co
     backend = services["medflow-backend-prod"]
     backend_env = {entry["key"]: entry for entry in backend["envVars"]}
     assert backend_env["MEDFLOW_SERVICE_ROLE"]["value"] == "web"
-    assert backend_env["CLAMAV_HOST"]["sync"] is False
+    expected_clamav = {
+        "type": "pserv",
+        "name": "medflow-clamav-prod",
+        "property": "host",
+    }
+    assert backend_env["CLAMAV_HOST"]["fromService"] == expected_clamav
     assert backend_env["CLAMAV_PORT"]["value"] == "3310"
     assert "--no-server-header" in backend["startCommand"]
 
@@ -236,9 +242,9 @@ def test_render_blueprint_deploys_durable_malware_worker_and_required_scanner_co
         "DATABASE_URL",
         "SUPABASE_URL",
         "SUPABASE_SERVICE_ROLE_KEY",
-        "CLAMAV_HOST",
     }:
         assert worker_env[key]["sync"] is False
+    assert worker_env["CLAMAV_HOST"]["fromService"] == expected_clamav
 
 
 def test_render_static_frontends_define_security_headers():
@@ -289,7 +295,7 @@ def test_ci_uses_pinned_modern_actions_and_least_privilege_checkout():
     assert "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1" in workflow
     assert "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97" in workflow
     assert "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020" in workflow
-    assert workflow.count("persist-credentials: false") == 2
+    assert workflow.count("persist-credentials: false") == 3
     assert "Run P3 production hardening verification" in workflow
 
 

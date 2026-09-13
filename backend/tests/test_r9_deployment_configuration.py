@@ -62,10 +62,21 @@ def test_production_blueprint_gates_deploys_and_runs_migrations_predeploy():
         "ENCRYPTION_KEY",
         "TRUSTED_PROXY_CIDRS",
         "FRONTEND_CORS_ORIGINS",
+        "OBSERVABILITY_TOKEN",
     }:
         assert env[key]["sync"] is False
     assert env["SECRET_KEY"]["generateValue"] is True
     assert env["REFRESH_COOKIE_SAMESITE"]["value"] == "none"
+
+    clamav = services["medflow-clamav-prod"]
+    assert clamav["type"] == "pserv"
+    assert clamav["runtime"] == "image"
+    assert clamav["image"]["url"] == "docker.io/clamav/clamav:1.5.3"
+    assert env["CLAMAV_HOST"]["fromService"] == {
+        "type": "pserv",
+        "name": "medflow-clamav-prod",
+        "property": "host",
+    }
 
 
 def test_static_frontends_use_backend_url_and_spa_rewrite():

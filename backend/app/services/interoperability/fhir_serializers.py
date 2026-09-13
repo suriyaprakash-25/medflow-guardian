@@ -28,6 +28,7 @@ def to_fhir_patient(user: User) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "Patient",
         "id": str(user.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Patient record</p></div>'},
         "active": bool(user.is_active),
         "name": [{"text": user.full_name or user.email}],
         "telecom": [{"system": "email", "value": user.email}],
@@ -42,6 +43,7 @@ def to_fhir_practitioner(user: User) -> Dict[str, Any]:
     return {
         "resourceType": "Practitioner",
         "id": str(user.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Practitioner record</p></div>'},
         "active": bool(user.is_active),
         "name": [{"text": f"Dr. {user.full_name or user.email}"}],
         "telecom": [{"system": "email", "value": user.email}],
@@ -53,6 +55,7 @@ def to_fhir_organization(hospital: Hospital) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "Organization",
         "id": str(hospital.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Healthcare organization</p></div>'},
         "active": bool(hospital.is_active),
         "name": hospital.name,
     }
@@ -121,6 +124,7 @@ def to_fhir_consent(
     return {
         "resourceType": "Consent",
         "id": str(consent.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Patient privacy consent</p></div>'},
         "status": medflow_status_to_fhir_status(state.status),
         "scope": {
             "coding": [
@@ -160,6 +164,7 @@ def to_fhir_medication_request(prescription: Prescription) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "MedicationRequest",
         "id": str(prescription.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Medication request</p></div>'},
         "status": "active" if prescription.is_active else "completed",
         "intent": "order",
         "medicationCodeableConcept": {"text": med_display},
@@ -189,6 +194,7 @@ def to_fhir_observation(lab: LabResult) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "Observation",
         "id": str(lab.id),
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Laboratory observation</p></div>'},
         "status": status_map.get(lab.status, "unknown"),
         "code": {"text": lab.test_name},
         "subject": {"reference": f"Patient/{lab.patient_id}"},
@@ -212,6 +218,7 @@ def to_fhir_document_reference_note(note: ClinicalNote) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "DocumentReference",
         "id": f"clinical-note-{note.id}",
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Clinical document reference</p></div>'},
         "status": "current",
         "type": {"text": note.note_type or note.title},
         "description": note.title,
@@ -253,6 +260,7 @@ def to_fhir_document_reference_file(doc: MedicalDocument) -> Dict[str, Any]:
     resource: Dict[str, Any] = {
         "resourceType": "DocumentReference",
         "id": f"medical-document-{doc.id}",
+        "text": {"status": "generated", "div": '<div xmlns="http://www.w3.org/1999/xhtml"><p>Protected medical document reference</p></div>'},
         "status": "current" if doc.status == "active" else "superseded",
         "type": {"text": doc.document_type},
         "subject": {"reference": f"Patient/{doc.patient_id}"},
@@ -273,6 +281,14 @@ def to_fhir_bundle(resources: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "resourceType": "Bundle",
         "type": "collection",
-        "total": len(resources),
-        "entry": [{"resource": resource} for resource in resources],
+        "entry": [
+            {
+                "fullUrl": (
+                    "https://medflowguardian.example/fhir/"
+                    f"{resource['resourceType']}/{resource['id']}"
+                ),
+                "resource": resource,
+            }
+            for resource in resources
+        ],
     }

@@ -1,0 +1,122 @@
+{
+  "resourceType": "Bundle",
+  "type": "collection",
+  "entry": [
+    {
+      "fullUrl": "https://medflowguardian.example/fhir/Patient/101",
+      "resource": {
+        "resourceType": "Patient",
+        "id": "101",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Patient record</p></div>"
+        },
+        "active": true,
+        "name": [
+          {
+            "text": "Example Patient"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "email",
+            "value": "patient@example.test"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://medflowguardian.example/fhir/Practitioner/202",
+      "resource": {
+        "resourceType": "Practitioner",
+        "id": "202",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Practitioner record</p></div>"
+        },
+        "active": true,
+        "name": [
+          {
+            "text": "Dr. Example Doctor"
+          }
+        ],
+        "telecom": [
+          {
+            "system": "email",
+            "value": "doctor@example.test"
+          }
+        ]
+      }
+    },
+    {
+      "fullUrl": "https://medflowguardian.example/fhir/Organization/303",
+      "resource": {
+        "resourceType": "Organization",
+        "id": "303",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Healthcare organization</p></div>"
+        },
+        "active": true,
+        "name": "Example Hospital"
+      }
+    },
+    {
+      "fullUrl": "https://medflowguardian.example/fhir/MedicationRequest/501",
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "501",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Medication request</p></div>"
+        },
+        "status": "active",
+        "intent": "order",
+        "medicationCodeableConcept": {
+          "text": "Example Medication"
+        },
+        "subject": {
+          "reference": "Patient/101"
+        },
+        "requester": {
+          "reference": "Practitioner/202"
+        },
+        "dosageInstruction": [
+          {
+            "text": "One tablet Daily"
+          }
+        ],
+        "dispenseRequest": {
+          "validityPeriod": {
+            "start": "2026-09-01T00:00:00+00:00"
+          }
+        }
+      }
+    },
+    {
+      "fullUrl": "https://medflowguardian.example/fhir/Observation/502",
+      "resource": {
+        "resourceType": "Observation",
+        "id": "502",
+        "text": {
+          "status": "generated",
+          "div": "<div xmlns=\"http://www.w3.org/1999/xhtml\"><p>Laboratory observation</p></div>"
+        },
+        "status": "final",
+        "code": {
+          "text": "Example laboratory test"
+        },
+        "subject": {
+          "reference": "Patient/101"
+        },
+        "performer": [
+          {
+            "reference": "Practitioner/202"
+          }
+        ],
+        "valueString": "Normal",
+        "effectiveDateTime": "2026-09-01T00:00:00+00:00"
+      }
+    }
+  ]
+}

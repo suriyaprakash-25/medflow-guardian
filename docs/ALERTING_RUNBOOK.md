@@ -24,3 +24,44 @@ Alerts MUST NOT fire for normal operational failures:
 - A single 403 from a doctor querying a patient they don't have access to is normal.
 - A single 401 when an access token expires is normal.
 - Alerts should only trigger on *rate anomalies* or *systemic backend failures*.
+# Production alert response
+
+Every alert requires an incident owner, UTC timestamps, correlation IDs, an
+impact assessment, and a link to preserved evidence. Never paste PHI, tokens,
+cookies, request bodies, or database rows into tickets or chat.
+
+## MedFlowApiUnavailable
+
+Page operations immediately. Confirm Render service state and recent deploys,
+then use `/health`. Roll back the most recent release if availability did not
+recover within five minutes.
+
+## MedFlowApiNotReady
+
+Page operations and database owners. Check Supabase availability, connection
+pool saturation, SSL configuration, and migration state. Do not route traffic
+to an instance returning `503` from `/ready`.
+
+## MedFlowHighServerErrorRate
+
+Page the backend owner. Group structured logs by normalized route and request
+ID. If one release introduced the failures, execute the rollback runbook.
+
+## MedFlowHighLatency
+
+Notify the backend and database owners. Compare route p95 with PostgreSQL query,
+lock, and connection metrics; capture `EXPLAIN (ANALYZE, BUFFERS)` only against
+sanitized or approved data.
+
+## MedFlowAuthorizationDenialSpike
+
+Notify security. Break down the bounded metric by resource, operation, and
+reason, then correlate request IDs with authorization audit records. Treat
+unexplained cross-tenant, consent, or session denial spikes as a potential
+security incident.
+
+## Closure
+
+Close only after the metric is healthy, the underlying cause is documented,
+temporary credentials are revoked, and corrective work has an owner and due
+date. Follow `docs/INCIDENT_RESPONSE_RUNBOOK.md` for suspected compromise.

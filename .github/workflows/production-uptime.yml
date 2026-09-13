@@ -1,0 +1,30 @@
+name: Production uptime monitor
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: medflow-production-uptime
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    if: ${{ vars.PRODUCTION_API_URL != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify production liveness and readiness
+        env:
+          PRODUCTION_API_URL: ${{ vars.PRODUCTION_API_URL }}
+        run: |
+          set -euo pipefail
+          base_url="${PRODUCTION_API_URL%/}"
+          health_json="$(curl --fail --silent --show-error --max-time 15 "$base_url/health")"
+          ready_json="$(curl --fail --silent --show-error --max-time 15 "$base_url/ready")"
+          test "$health_json" = '{"status":"ok"}'
+          test "$ready_json" = '{"status":"ready"}'

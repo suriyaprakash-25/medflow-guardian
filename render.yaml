@@ -2,6 +2,19 @@
 # Deployments wait for GitHub CI checks and migrations run in pre-deploy, not build.
 
 services:
+  - type: pserv
+    name: medflow-clamav-prod
+    runtime: image
+    image:
+      url: docker.io/clamav/clamav:1.5.3
+    plan: 1c-2g
+    region: singapore
+    maxShutdownDelaySeconds: 60
+    disk:
+      name: clamav-signatures
+      mountPath: /var/lib/clamav
+      sizeGB: 10
+
   - type: web
     name: medflow-backend-prod
     runtime: python
@@ -31,12 +44,17 @@ services:
       - key: ENCRYPTION_KEY
         sync: false
       - key: CLAMAV_HOST
-        sync: false
+        fromService:
+          type: pserv
+          name: medflow-clamav-prod
+          property: host
       - key: CLAMAV_PORT
         value: "3310"
       - key: REFRESH_COOKIE_SAMESITE
         value: none
       - key: TRUSTED_PROXY_CIDRS
+        sync: false
+      - key: OBSERVABILITY_TOKEN
         sync: false
       - key: PATIENT_APP_ORIGIN
         fromService:
@@ -82,7 +100,10 @@ services:
       - key: SUPABASE_STORAGE_BUCKET
         value: medical-documents
       - key: CLAMAV_HOST
-        sync: false
+        fromService:
+          type: pserv
+          name: medflow-clamav-prod
+          property: host
       - key: CLAMAV_PORT
         value: "3310"
       - key: CLAMAV_TIMEOUT_SECONDS
@@ -93,6 +114,27 @@ services:
         value: "25"
       - key: MALWARE_WORKER_POLL_SECONDS
         value: "5"
+
+  - type: cron
+    name: medflow-retention-prod
+    runtime: python
+    schedule: "15 2 * * *"
+    buildCommand: "cd backend && pip install -r requirements.txt"
+    startCommand: "cd backend && python -m scripts.apply_retention --apply"
+    envVars:
+      - key: ENV
+        value: production
+      - key: MEDFLOW_SERVICE_ROLE
+        value: retention_worker
+      - key: PYTHON_VERSION
+        value: "3.11.16"
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+
 
   - type: web
     name: medflow-patient-app-prod

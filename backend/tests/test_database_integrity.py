@@ -16,6 +16,8 @@ EXPECTED_CHECK_CONSTRAINTS = {
     "ck_consent_policy_versions_status",
     "ck_consent_states_status",
     "ck_medical_documents_file_size",
+    "ck_privacy_requests_type",
+    "ck_privacy_requests_status",
 }
 
 EXPECTED_HISTORY_TRIGGERS = {

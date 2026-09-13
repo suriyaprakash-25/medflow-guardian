@@ -5,10 +5,13 @@ Entry point for the backend API server.
 """
 
 from contextlib import asynccontextmanager
+import re
+import secrets
+import uuid
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
@@ -25,6 +28,7 @@ from app.api import (
     interoperability,
     monitoring,
     notification,
+    privacy,
     triage,
     users,
     visits,
@@ -33,6 +37,15 @@ from app.api import (
 from app.core.config import settings
 from app.core.limiter import limiter
 from app.core.logging import log
+from app.core.observability import (
+    monotonic_time,
+    observe_http_request,
+    render_prometheus,
+    set_readiness,
+)
+
+
+_REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
 
 
 @asynccontextmanager
@@ -78,6 +91,66 @@ app.add_middleware(SlowAPIMiddleware)
 
 
 @app.middleware("http")
+async def observe_request(request: Request, call_next):
+    supplied_request_id = request.headers.get("X-Request-ID", "")
+    request_id = (
+        supplied_request_id
+        if _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
+        else str(uuid.uuid4())
+    )
+    started = monotonic_time()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+    except Exception:
+        route = getattr(request.scope.get("route"), "path", "unmatched")
+        duration = monotonic_time() - started
+        observe_http_request(
+            method=request.method,
+            route=route,
+            status_code=status_code,
+            duration_seconds=duration,
+        )
+        log.exception(
+            "Unhandled request failure",
+            extra={
+                "event": "http_request",
+                "request_id": request_id,
+                "method": request.method,
+                "route": route,
+                "status_code": status_code,
+                "duration_ms": round(duration * 1000, 3),
+            },
+        )
+        raise
+
+    route = getattr(request.scope.get("route"), "path", "unmatched")
+    duration = monotonic_time() - started
+    if route != "/internal/metrics":
+        observe_http_request(
+            method=request.method,
+            route=route,
+            status_code=status_code,
+            duration_seconds=duration,
+        )
+    response.headers["X-Request-ID"] = request_id
+    log_method = log.warning if status_code >= 500 else log.info
+    log_method(
+        "HTTP request completed",
+        extra={
+            "event": "http_request",
+            "request_id": request_id,
+            "method": request.method,
+            "route": route,
+            "status_code": status_code,
+            "duration_ms": round(duration * 1000, 3),
+        },
+    )
+    return response
+
+
+@app.middleware("http")
 async def add_security_headers(request: Request, call_next):  # noqa: ARG001
     """Apply defense-in-depth headers to every backend response.
 
@@ -117,6 +190,7 @@ app.include_router(hospital.router, prefix="/api", tags=["hospital"])
 app.include_router(document.router, prefix="/api", tags=["document"])
 app.include_router(access.router, prefix="/api", tags=["access"])
 app.include_router(notification.router, prefix="/api", tags=["notification"])
+app.include_router(privacy.router, prefix="/api", tags=["privacy"])
 app.include_router(audit.router, prefix="/api", tags=["audit"])
 app.include_router(appointments.router, prefix="/api", tags=["appointments"])
 app.include_router(visits.router, prefix="/api", tags=["visits"])
@@ -136,18 +210,45 @@ async def health_check():
 @app.get("/ready", tags=["health"])
 async def readiness_check():
     """Readiness probe: answers 'Can this instance serve requests safely?'"""
-    from app.core.database import SessionLocal
-    from sqlalchemy import text
-
-    db = SessionLocal()
     try:
-        db.execute(text("SELECT 1"))
+        from app.core.operational_readiness import (
+            database_ready,
+            production_dependency_status,
+        )
+
+        if settings.ENV == "production":
+            dependency_status = production_dependency_status()
+            if not all(dependency_status.values()):
+                failed = sorted(
+                    name for name, ready in dependency_status.items() if not ready
+                )
+                log.error(
+                    "Production dependency readiness failed",
+                    extra={"event": "readiness_failed", "components": failed},
+                )
+                raise RuntimeError("Production dependency unavailable")
+        elif not database_ready():
+            raise RuntimeError("Database unavailable")
+        set_readiness(True)
         return {"status": "ready"}
     except Exception:
+        set_readiness(False)
         log.exception("Readiness database connectivity check failed")
         raise HTTPException(
             status_code=503,
-            detail="Service unavailable: Database connection failed",
+            detail="Service unavailable: dependency readiness failed",
         )
-    finally:
-        db.close()
+
+
+@app.get("/internal/metrics", include_in_schema=False)
+async def metrics(request: Request):
+    """Protected Prometheus scrape endpoint; never contains request payloads."""
+    configured = settings.OBSERVABILITY_TOKEN
+    authorization = request.headers.get("Authorization", "")
+    supplied = authorization[7:] if authorization.startswith("Bearer ") else ""
+    if not configured or not secrets.compare_digest(supplied, configured):
+        raise HTTPException(status_code=404, detail="Not found")
+    return PlainTextResponse(
+        render_prometheus(),
+        media_type="text/plain; version=0.0.4; charset=utf-8",
+    )

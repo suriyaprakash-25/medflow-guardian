@@ -27,7 +27,7 @@ def migrate_data():
         print("Please configure a PostgreSQL connection string in .env to run the migration.")
         sys.exit(1)
 
-    print(f"Connecting to PostgreSQL: {postgres_url}")
+    print("Connecting to configured PostgreSQL database")
     pg_engine = create_engine(postgres_url)
     
     try:
@@ -87,7 +87,9 @@ def migrate_data():
                 
                 # Get sqlite data
                 try:
-                    sqlite_cursor.execute(f"SELECT * FROM {table_name}")
+                    # Names come only from the fixed allowlist above and are not
+                    # influenced by input. SQLite cannot bind identifiers.
+                    sqlite_cursor.execute(f'SELECT * FROM "{table_name}"')  # nosec B608
                     rows = sqlite_cursor.fetchall()
                 except sqlite3.OperationalError as e:
                     print(f"WARNING: Could not read from {table_name} in SQLite: {e}")

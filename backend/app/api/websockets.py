@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from jose import jwt, JWTError
+import jwt
+from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -302,7 +303,7 @@ def verify_token(token: str, db: Session) -> Optional[WebSocketPrincipal]:
         expires_at = datetime.fromtimestamp(expires_at_raw, tz=timezone.utc)
         if expires_at <= datetime.now(timezone.utc):
             return None
-    except (JWTError, ValueError, TypeError, OverflowError):
+    except (InvalidTokenError, ValueError, TypeError, OverflowError):
         return None
 
     user = db.query(User).filter(User.email == email).first()

@@ -1,6 +1,7 @@
 from typing import Any, Dict, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_current_user
@@ -8,6 +9,7 @@ from app.core.database import get_db
 from app.models.clinical import ClinicalNote, LabResult, Prescription
 from app.models.consent import Consent
 from app.models.document import MedicalDocument
+from app.models.hospital import Hospital
 from app.models.user import User
 from app.schemas.consent import FHIRConsentImportResponse
 from app.services.authorization import (
@@ -27,11 +29,23 @@ from app.services.interoperability.fhir_serializers import (
     to_fhir_document_reference_note,
     to_fhir_medication_request,
     to_fhir_observation,
+    to_fhir_organization,
     to_fhir_patient,
+    to_fhir_practitioner,
 )
+from app.services.interoperability.capability import build_capability_statement
 
 
 router = APIRouter()
+
+
+@router.get("/interoperability/metadata")
+def fhir_capability_statement(request: Request) -> JSONResponse:
+    """Return the public, implementation-specific FHIR R4 capability statement."""
+    return JSONResponse(
+        build_capability_statement(str(request.base_url).rstrip("/")),
+        media_type="application/fhir+json",
+    )
 
 
 def _denial_detail(decision) -> str:
@@ -209,13 +223,36 @@ def export_patient_fhir_bundle(
             MedicalDocument.hospital_id == hospital_scope
         )
 
-    for prescription in prescription_query.all():
+    prescriptions = prescription_query.all()
+    labs = lab_query.all()
+    notes = note_query.all()
+    documents = document_query.all()
+
+    practitioner_ids = {
+        item.doctor_id for item in [*prescriptions, *labs, *notes]
+    } | {item.uploaded_by_doctor_id for item in documents}
+    organization_ids = {
+        item.hospital_id for item in [*prescriptions, *labs, *notes, *documents]
+    }
+    practitioners = db.query(User).filter(
+        User.id.in_(practitioner_ids), User.role == "doctor"
+    ).all() if practitioner_ids else []
+    organizations = db.query(Hospital).filter(
+        Hospital.id.in_(organization_ids)
+    ).all() if organization_ids else []
+    resources.extend(to_fhir_practitioner(item) for item in practitioners)
+    resources.extend(to_fhir_organization(item) for item in organizations)
+
+    for prescription in prescriptions:
         resources.append(to_fhir_medication_request(prescription))
-    for lab in lab_query.all():
+    for lab in labs:
         resources.append(to_fhir_observation(lab))
-    for note in note_query.all():
+    for note in notes:
         resources.append(to_fhir_document_reference_note(note))
-    for document in document_query.all():
+    for document in documents:
         resources.append(to_fhir_document_reference_file(document))
 
-    return to_fhir_bundle(resources)
+    return JSONResponse(
+        to_fhir_bundle(resources),
+        media_type="application/fhir+json",
+    )

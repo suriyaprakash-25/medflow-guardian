@@ -1,0 +1,52 @@
+groups:
+  - name: medflow-production
+    rules:
+      - alert: MedFlowApiUnavailable
+        expr: medflow_up == 0 or absent(medflow_up)
+        for: 2m
+        labels:
+          severity: critical
+          owner: operations
+        annotations:
+          summary: MedFlow API is unavailable
+          runbook: docs/ALERTING_RUNBOOK.md#medflowapiunavailable
+
+      - alert: MedFlowApiNotReady
+        expr: medflow_ready == 0
+        for: 5m
+        labels:
+          severity: critical
+          owner: operations
+        annotations:
+          summary: MedFlow API cannot reach its database
+          runbook: docs/ALERTING_RUNBOOK.md#medflowapinotready
+
+      - alert: MedFlowHighServerErrorRate
+        expr: sum(rate(medflow_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(medflow_http_requests_total[5m])), 0.001) > 0.02
+        for: 10m
+        labels:
+          severity: critical
+          owner: backend
+        annotations:
+          summary: More than 2 percent of API requests are failing
+          runbook: docs/ALERTING_RUNBOOK.md#medflowhighservererrorrate
+
+      - alert: MedFlowHighLatency
+        expr: histogram_quantile(0.95, sum by (le) (rate(medflow_http_request_duration_seconds_bucket[10m]))) > 1
+        for: 15m
+        labels:
+          severity: warning
+          owner: backend
+        annotations:
+          summary: API p95 latency exceeds one second
+          runbook: docs/ALERTING_RUNBOOK.md#medflowhighlatency
+
+      - alert: MedFlowAuthorizationDenialSpike
+        expr: sum(rate(medflow_authorization_decisions_total{decision="deny"}[10m])) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+          owner: security
+        annotations:
+          summary: Authorization denials exceed the investigation threshold
+          runbook: docs/ALERTING_RUNBOOK.md#medflowauthorizationdenialspike

@@ -4,7 +4,8 @@ from typing import Iterable
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-from jose import jwt, JWTError
+import jwt
+from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
@@ -62,7 +63,7 @@ def _load_identity_from_token(
             raise credentials_exception
         if session_id is not None and not isinstance(session_id, int):
             raise credentials_exception
-    except JWTError:
+    except InvalidTokenError:
         raise credentials_exception
 
     user = db.query(User).filter(User.email == email).first()

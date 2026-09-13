@@ -18,8 +18,14 @@ from app.models.document import MedicalDocument
 from app.models.hospital import Appointment, Hospital, HospitalStaff, Visit
 from app.models.notification import Notification
 from app.models.user import User
+from app.core.observability import observe_authorization
 
 logger = logging.getLogger(__name__)
+
+
+def _bounded_metric_value(value: Any, enum_type: type[enum.Enum]) -> str:
+    """Return only declared enum values so metric labels stay bounded."""
+    return value.value if isinstance(value, enum_type) else "unknown"
 
 
 class Operation(str, enum.Enum):
@@ -60,6 +66,8 @@ class ResourceType(str, enum.Enum):
     APPOINTMENT = "appointment"
     FHIR_EXPORT = "fhir_export"
     CONSENT = "consent"
+    PRIVACY_REQUEST = "privacy_request"
+    LEGAL_HOLD = "legal_hold"
 
 
 class DenialReason(str, enum.Enum):
@@ -129,13 +137,27 @@ class AuthorizationService:
 
     def authorize(self, ctx: AuthorizationContext) -> AuthorizationDecision:
         if ctx.actor is None:
-            return AuthorizationDecision.deny(
+            result = AuthorizationDecision.deny(
                 DenialReason.AUTHENTICATION_REQUIRED, "No authenticated actor"
             )
+            observe_authorization(
+                resource_type=_bounded_metric_value(ctx.resource_type, ResourceType),
+                operation=_bounded_metric_value(ctx.operation, Operation),
+                allowed=False,
+                reason=result.reason.value,
+            )
+            return result
         if not ctx.actor.is_active:
-            return AuthorizationDecision.deny(
+            result = AuthorizationDecision.deny(
                 DenialReason.USER_INACTIVE, "User account is inactive"
             )
+            observe_authorization(
+                resource_type=_bounded_metric_value(ctx.resource_type, ResourceType),
+                operation=_bounded_metric_value(ctx.operation, Operation),
+                allowed=False,
+                reason=result.reason.value,
+            )
+            return result
 
         try:
             result = self._dispatch(ctx)
@@ -152,10 +174,16 @@ class AuthorizationService:
             self._audit_decision(ctx, result)
         except AuthorizationAuditError:
             if result.allowed:
-                return AuthorizationDecision.deny(
+                result = AuthorizationDecision.deny(
                     DenialReason.AUDIT_PERSISTENCE_FAILED,
                     "Authorization audit unavailable; operation denied",
                 )
+        observe_authorization(
+            resource_type=_bounded_metric_value(ctx.resource_type, ResourceType),
+            operation=_bounded_metric_value(ctx.operation, Operation),
+            allowed=result.allowed,
+            reason=result.reason.value if result.reason else None,
+        )
         return result
 
     def _audit_decision(
@@ -276,6 +304,8 @@ class AuthorizationService:
             ResourceType.APPOINTMENT: self._authorize_appointment,
             ResourceType.FHIR_EXPORT: self._authorize_fhir_export,
             ResourceType.CONSENT: self._authorize_consent,
+            ResourceType.PRIVACY_REQUEST: self._authorize_privacy_request,
+            ResourceType.LEGAL_HOLD: self._authorize_legal_hold,
         }
         if ctx.resource_type in (
             ResourceType.PRACTITIONER_PROFILE,
@@ -951,3 +981,28 @@ class AuthorizationService:
                 "Only administrators can manage users",
             )
         return AuthorizationDecision.default_deny()
+
+    def _authorize_privacy_request(
+        self, ctx: AuthorizationContext
+    ) -> AuthorizationDecision:
+        if ctx.actor.role == "platform_admin":
+            return AuthorizationDecision.allow()
+        if ctx.actor.role == "patient" and ctx.patient_id == ctx.actor.id:
+            if ctx.operation in (Operation.CREATE, Operation.LIST, Operation.READ):
+                return AuthorizationDecision.allow()
+        return AuthorizationDecision.deny(
+            DenialReason.ROLE_NOT_PERMITTED,
+            "Privacy requests are patient-owned and platform-admin reviewed",
+        )
+
+    def _authorize_legal_hold(self, ctx: AuthorizationContext) -> AuthorizationDecision:
+        if ctx.actor.role == "platform_admin" and ctx.operation in (
+            Operation.CREATE,
+            Operation.UPDATE,
+            Operation.LIST,
+        ):
+            return AuthorizationDecision.allow()
+        return AuthorizationDecision.deny(
+            DenialReason.ROLE_NOT_PERMITTED,
+            "Only platform administrators may manage legal holds",
+        )

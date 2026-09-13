@@ -19,6 +19,7 @@ HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 PUBLIC_EXPECTATIONS = {
     ("GET", "/health"): 200,
     ("GET", "/ready"): 200,
+    ("GET", "/api/interoperability/metadata"): 200,
     ("POST", "/api/auth/login"): 422,
     ("POST", "/api/auth/mfa/verify"): 401,
     ("POST", "/api/auth/refresh"): 401,
@@ -50,12 +51,27 @@ def _test_script(*, expected_status: int, path: str) -> list[str]:
                 "});",
             ]
         )
+    if path == "/api/interoperability/metadata":
+        script.extend(
+            [
+                'pm.test("FHIR capability payload is correct", function () {',
+                '  pm.expect(pm.response.headers.get("Content-Type")).to.include("application/fhir+json");',
+                '  pm.expect(pm.response.json().resourceType).to.eql("CapabilityStatement");',
+                '  pm.expect(pm.response.json().fhirVersion).to.eql("4.0.1");',
+                "});",
+            ]
+        )
     return script
 
 
 def _request_item(method: str, path: str, tag: str) -> dict:
     expected_status = PUBLIC_EXPECTATIONS.get((method, path), 401)
-    headers = [{"key": "Accept", "value": "application/json"}]
+    accept = (
+        "application/fhir+json"
+        if path == "/api/interoperability/metadata"
+        else "application/json"
+    )
+    headers = [{"key": "Accept", "value": accept}]
     if (method, path) not in PUBLIC_EXPECTATIONS:
         headers.append(
             {"key": "Authorization", "value": "Bearer invalid.token.for.contract-test"}

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from datetime import timedelta
-from jose import jwt
+import jwt
 import pyotp
 
 from app.main import app
