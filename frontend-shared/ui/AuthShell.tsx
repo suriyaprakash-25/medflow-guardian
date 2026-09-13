@@ -39,8 +39,8 @@ export function AuthShell({ portalLabel, title, description, children, securityN
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">{portalLabel}</p>
             </div>
             <h2 id="auth-form-title" className="text-2xl font-bold tracking-tight text-slate-950">Secure sign in</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-600">Use your assigned account. Credentials are never prefilled in production UI.</p>
-            <div id="auth-form" className="mt-6">{children}</div>
+            <p className="mt-2 text-sm leading-6 text-slate-600">Enter your assigned credentials. This form does not prefill account secrets.</p>
+            <div id="auth-form" tabIndex={-1} className="mt-6 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-4">{children}</div>
             <p className="mt-6 border-t border-slate-100 pt-5 text-xs leading-5 text-slate-500">
               {securityNote || 'Authentication establishes identity only; every protected action is still authorized by the server.'}
             </p>
