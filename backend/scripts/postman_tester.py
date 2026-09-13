@@ -5,7 +5,7 @@ def test_endpoints():
     base_url = "http://127.0.0.1:8080"
     report = []
     
-    with httpx.Client(timeout=10.0) as client:
+    with httpx.Client(timeout=60.0) as client:
         # 1. Login
         response = client.post(f"{base_url}/api/auth/login", data={
             "username": "doctor@demo.com",

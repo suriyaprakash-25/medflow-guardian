@@ -1,9 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ActivitySquare, Database, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@shared/ui/Button';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { api } from '../lib/api';
+
+const PieChart = React.lazy(() => import('recharts').then(module => ({ default: module.PieChart })));
+const Pie = React.lazy(() => import('recharts').then(module => ({ default: module.Pie })));
+const Cell = React.lazy(() => import('recharts').then(module => ({ default: module.Cell })));
+const ResponsiveContainer = React.lazy(() => import('recharts').then(module => ({ default: module.ResponsiveContainer })));
+const Tooltip = React.lazy(() => import('recharts').then(module => ({ default: module.Tooltip })));
 
 interface DashboardMetricData {
   metrics: {
@@ -44,6 +50,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [loadedAt, setLoadedAt] = useState<Date | null>(null);
+  const [filter, setFilter] = useState<'ALL' | 'ALLOW' | 'DENY'>('ALL');
 
   const fetchDashboard = useCallback(async () => {
     setLoading(true);
@@ -81,6 +88,15 @@ export default function Dashboard() {
     { label: isPlatformAdmin ? 'Patient accounts' : 'Patients with visits', value: data.metrics.total_patients, icon: ActivitySquare, description: isPlatformAdmin ? 'Patient accounts across the platform.' : 'Distinct patients with a visit in this organization.' },
   ];
 
+  const filteredActivity = data.recent_activity.filter(log => filter === 'ALL' || log.decision === filter);
+  
+  const allowCount = data.recent_activity.filter(a => a.decision === 'ALLOW').length;
+  const denyCount = data.recent_activity.filter(a => a.decision === 'DENY').length;
+  const healthData = [
+    { name: 'Allowed', value: allowCount, color: '#10b981' },
+    { name: 'Denied', value: denyCount, color: '#f43f5e' }
+  ];
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -109,41 +125,79 @@ export default function Dashboard() {
         })}
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="recent-security-heading">
-        <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-slate-200/70 p-2"><Database className="h-5 w-5 text-slate-700" aria-hidden="true" /></div>
-            <div>
-              <h3 id="recent-security-heading" className="font-bold text-slate-950">Recent authorization events</h3>
-              <p className="mt-1 text-xs text-slate-500">Five most recent audit records in the current scope.</p>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <section className="lg:col-span-2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm" aria-labelledby="recent-security-heading">
+          <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50/80 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div className="flex items-center gap-3">
+              <div className="rounded-lg bg-slate-200/70 p-2"><Database className="h-5 w-5 text-slate-700" aria-hidden="true" /></div>
+              <div>
+                <h3 id="recent-security-heading" className="font-bold text-slate-950">Recent authorization events</h3>
+                <p className="mt-1 text-xs text-slate-500">Live feed of the latest decisions.</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="flex bg-slate-200/50 rounded-lg p-1">
+                 {(['ALL', 'ALLOW', 'DENY'] as const).map(f => (
+                   <button key={f} onClick={() => setFilter(f)} className={`px-3 py-1 text-xs font-semibold rounded-md transition-colors ${filter === f ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-800'}`}>{f}</button>
+                 ))}
+              </div>
+              <Link to="/audit" className="inline-flex min-h-9 items-center justify-center rounded-md border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700">View all</Link>
             </div>
           </div>
-          <Link to="/audit" className="inline-flex min-h-11 items-center justify-center rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-800 transition-colors hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2">View full audit log</Link>
-        </div>
 
-        {data.recent_activity.length === 0 ? (
-          <div className="p-6"><FeedbackState tone="empty" title="No recent authorization events" message="No audit records were returned for the current scope." compact /></div>
-        ) : (
-          <div className="divide-y divide-slate-100">
-            {data.recent_activity.map((log) => {
-              const allowed = log.decision === 'ALLOW';
-              return (
-                <article key={log.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{log.decision}</span>
-                      <span className="font-semibold text-slate-950">{log.operation}</span>
-                      <span className="text-sm text-slate-500">on {log.resource_type}</span>
+          {filteredActivity.length === 0 ? (
+            <div className="p-6"><FeedbackState tone="empty" title="No matching events" message="No audit records match the current filter." compact /></div>
+          ) : (
+            <div className="divide-y divide-slate-100">
+              {filteredActivity.map((log) => {
+                const allowed = log.decision === 'ALLOW';
+                return (
+                  <article key={log.id} className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 hover:bg-slate-50 transition-colors">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-bold ${allowed ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-rose-200 bg-rose-50 text-rose-800'}`}>{log.decision}</span>
+                        <span className="font-semibold text-slate-950">{log.operation}</span>
+                        <span className="text-sm text-slate-500">on {log.resource_type}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-slate-500">Actor {log.actor_role} · ID {log.actor_id}{log.denial_reason ? ` · ${log.denial_reason}` : ''}</p>
                     </div>
-                    <p className="mt-2 text-xs text-slate-500">Actor {log.actor_role} · ID {log.actor_id}{log.denial_reason ? ` · ${log.denial_reason}` : ''}</p>
-                  </div>
-                  <time className="shrink-0 text-xs font-medium text-slate-500" dateTime={log.timestamp}>{new Date(log.timestamp).toLocaleString()}</time>
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                    <time className="shrink-0 text-xs font-medium text-slate-500" dateTime={log.timestamp}>{new Date(log.timestamp).toLocaleString()}</time>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="glass-panel overflow-hidden rounded-2xl p-6 flex flex-col items-center justify-center min-h-[300px]">
+           <h3 className="font-bold text-slate-950 self-start w-full border-b border-slate-200/50 pb-3 mb-4">Governance Health</h3>
+           {data.recent_activity.length > 0 ? (
+             <>
+               <div className="w-full h-48 relative">
+                 <Suspense fallback={<div className="text-slate-400 text-xs flex items-center justify-center h-full">Loading chart...</div>}>
+                   <ResponsiveContainer width="100%" height="100%">
+                     <PieChart>
+                       <Pie data={healthData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                         {healthData.map((entry, index) => (
+                           <Cell key={`cell-${index}`} fill={entry.color} />
+                         ))}
+                       </Pie>
+                       <Tooltip />
+                     </PieChart>
+                   </ResponsiveContainer>
+                 </Suspense>
+                 <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                    <span className="text-3xl font-bold text-slate-900">{Math.round((allowCount/(allowCount+denyCount))*100)}%</span>
+                    <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Pass Rate</span>
+                 </div>
+               </div>
+               <p className="text-xs text-center text-slate-500 mt-4 leading-relaxed">System health is calculated based on the authorization pass-rate of the most recent events.</p>
+             </>
+           ) : (
+             <FeedbackState tone="empty" title="No data" message="Not enough data to calculate health score." compact />
+           )}
+        </section>
+      </div>
     </div>
   );
 }
