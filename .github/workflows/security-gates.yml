@@ -56,4 +56,4 @@ jobs:
         run: |
           docker run --rm -v "$PWD:/repo" \
             ghcr.io/gitleaks/gitleaks@sha256:aa036a2f4bdfe3cc3c55fa4326308efabb4a6be498c883c864fd1d0d5585438a \
-            git --source /repo --redact --no-banner
+            git /repo --redact --no-banner
