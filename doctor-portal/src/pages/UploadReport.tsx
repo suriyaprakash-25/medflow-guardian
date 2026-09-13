@@ -2,166 +2,118 @@ import { useState } from 'react';
 import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
+import { FeedbackState } from '@shared/ui/FeedbackState';
+import { FormField } from '@shared/ui/FormField';
+import { Input } from '@shared/ui/Input';
 import { FileUp, FileText, UploadCloud, FileIcon, User, ChevronRight } from 'lucide-react';
 
+const documentTypes = [
+  { id: 'prescription', label: 'Prescription' },
+  { id: 'lab_report', label: 'Lab report' },
+  { id: 'imaging', label: 'Imaging / scan' },
+  { id: 'clinical_note', label: 'Clinical note' },
+];
+
 export default function UploadReport() {
-  const { 
-    doctorVisits, uploadVisitId, setUploadVisitId, 
-    uploadType, setUploadType, uploadTitle, setUploadTitle, 
-    uploadDesc, setUploadDesc, uploadFile, setUploadFile, 
-    uploading, handleUpload 
+  const {
+    doctorVisits, uploadVisitId, setUploadVisitId,
+    uploadType, setUploadType, uploadTitle, setUploadTitle,
+    uploadDesc, setUploadDesc, uploadFile, setUploadFile,
+    uploading, handleUpload,
   } = useDoctorContext();
-
   const [step, setStep] = useState(1);
-
-  const canProceedToStep2 = uploadVisitId && uploadType;
-  const canProceedToStep3 = uploadTitle && uploadFile;
-  const selectedVisit = doctorVisits.find(v => v.id.toString() === uploadVisitId);
+  const canProceedToStep2 = Boolean(uploadVisitId && uploadType);
+  const canProceedToStep3 = Boolean(uploadTitle.trim() && uploadFile);
+  const selectedVisit = doctorVisits.find((visit) => visit.id.toString() === uploadVisitId);
 
   return (
-    <div className="max-w-3xl mx-auto space-y-6 animate-in fade-in duration-500">
+    <div className="mx-auto max-w-3xl space-y-6">
       <div>
-        <h2 className="text-2xl font-bold tracking-tight text-slate-900">Upload Clinical Document</h2>
-        <p className="text-sm text-slate-500 mt-1">Securely attach lab reports, prescriptions, or imaging to a patient's record.</p>
+        <h2 className="text-2xl font-bold tracking-tight text-slate-950">Upload clinical document</h2>
+        <p className="mt-1 text-sm text-slate-600">Attach a document only to a visit assigned to your authenticated clinician context.</p>
       </div>
 
-      <div className="flex items-center justify-between mb-8">
-        <div className="flex flex-col items-center">
-          <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold ${step >= 1 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>1</div>
-          <span className="text-xs font-medium mt-2 text-slate-600">Context</span>
-        </div>
-        <div className={`flex-1 h-1 mx-4 rounded-full ${step >= 2 ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
-        <div className="flex flex-col items-center">
-          <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold ${step >= 2 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>2</div>
-          <span className="text-xs font-medium mt-2 text-slate-600">Details</span>
-        </div>
-        <div className={`flex-1 h-1 mx-4 rounded-full ${step >= 3 ? 'bg-blue-600' : 'bg-slate-200'}`}></div>
-        <div className="flex flex-col items-center">
-          <div className={`h-8 w-8 rounded-full flex items-center justify-center font-bold ${step >= 3 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-500'}`}>3</div>
-          <span className="text-xs font-medium mt-2 text-slate-600">Confirm</span>
-        </div>
-      </div>
+      <FeedbackState tone="info" title="Verify patient and visit context before upload" message="The server independently validates the selected visit, clinician, hospital and patient relationship before storing the document." compact />
+
+      <ol className="grid grid-cols-3 gap-2" aria-label="Upload progress">
+        {['Context', 'Details', 'Confirm'].map((label, index) => {
+          const number = index + 1;
+          const active = step === number;
+          const complete = step > number;
+          return (
+            <li key={label} aria-current={active ? 'step' : undefined} className={`rounded-xl border p-3 text-center text-xs font-semibold ${active ? 'border-blue-600 bg-blue-50 text-blue-800' : complete ? 'border-emerald-300 bg-emerald-50 text-emerald-800' : 'border-slate-200 bg-white text-slate-600'}`}>
+              <span className="block text-sm">{number}</span>{label}
+            </li>
+          );
+        })}
+      </ol>
 
       <Card>
         <CardContent className="p-6 md:p-8">
           <form onSubmit={handleUpload}>
-            {step === 1 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-900">Select Patient Visit</label>
-                  <p className="text-xs text-slate-500">Which active visit does this document belong to?</p>
-                  <select 
-                    className="w-full border border-slate-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" 
-                    value={uploadVisitId} 
-                    onChange={e => setUploadVisitId(e.target.value)} 
-                    required
-                  >
-                    <option value="">Select a patient visit...</option>
-                    {doctorVisits.map(v => (
-                      <option key={v.id} value={v.id}>Patient #{v.patient_id * 13} (Visit #{v.id})</option>
-                    ))}
+            {step === 1 ? (
+              <div className="space-y-6">
+                <FormField id="upload-visit" label="Patient visit" hint="Choose the authoritative visit that this document belongs to." required>
+                  <select id="upload-visit" className="min-h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-600" value={uploadVisitId} onChange={(event) => setUploadVisitId(event.target.value)} required>
+                    <option value="">Select a patient visit</option>
+                    {doctorVisits.map((visit) => <option key={visit.id} value={visit.id}>Patient ID {visit.patient_id} · Visit ID {visit.id}{visit.hospital?.name ? ` · ${visit.hospital.name}` : ''}</option>)}
                   </select>
-                </div>
+                </FormField>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-900">Document Category</label>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-2">
-                    {[
-                      { id: 'prescription', label: 'Prescription' },
-                      { id: 'lab_report', label: 'Lab Report' },
-                      { id: 'imaging', label: 'Imaging/Scan' },
-                      { id: 'clinical_note', label: 'Clinical Note' }
-                    ].map(type => (
-                      <div 
-                        key={type.id}
-                        onClick={() => setUploadType(type.id)}
-                        className={`border rounded-xl p-4 cursor-pointer flex flex-col items-center gap-3 transition-all ${
-                          uploadType === type.id 
-                            ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-100' 
-                            : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                        }`}
-                      >
-                        <FileText className={`h-6 w-6 ${uploadType === type.id ? 'text-blue-600' : 'text-slate-400'}`} />
-                        <span className={`text-xs text-center font-medium ${uploadType === type.id ? 'text-blue-700' : 'text-slate-600'}`}>
-                          {type.label}
-                        </span>
-                      </div>
+                <fieldset>
+                  <legend className="text-sm font-semibold text-slate-900">Document category <span className="text-rose-600">*</span></legend>
+                  <p className="mt-1 text-xs text-slate-600">Choose the category that best matches the file being uploaded.</p>
+                  <div className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {documentTypes.map((type) => (
+                      <label key={type.id} className={`flex min-h-24 cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border p-3 text-center transition-colors focus-within:ring-2 focus-within:ring-blue-600 ${uploadType === type.id ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}>
+                        <input className="sr-only" type="radio" name="document-type" value={type.id} checked={uploadType === type.id} onChange={() => setUploadType(type.id)} required />
+                        <FileText className="h-6 w-6" aria-hidden="true" />
+                        <span className="text-xs font-semibold">{type.label}</span>
+                      </label>
                     ))}
                   </div>
-                </div>
+                </fieldset>
 
-                <div className="flex justify-end pt-4">
-                  <Button type="button" onClick={() => setStep(2)} disabled={!canProceedToStep2} className="gap-2">
-                    Continue <ChevronRight className="h-4 w-4" />
-                  </Button>
-                </div>
+                <div className="flex justify-end pt-4"><Button type="button" onClick={() => setStep(2)} disabled={!canProceedToStep2}>Continue <ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button></div>
               </div>
-            )}
+            ) : null}
 
-            {step === 2 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-900">Document Title</label>
-                  <input type="text" value={uploadTitle} onChange={e => setUploadTitle(e.target.value)} required placeholder="e.g., Complete Blood Count (CBC) Results" className="w-full border border-slate-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-900">Clinical Notes (Optional)</label>
-                  <textarea value={uploadDesc} onChange={e => setUploadDesc(e.target.value)} rows={3} placeholder="Add any relevant observations..." className="w-full border border-slate-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none" />
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-sm font-semibold text-slate-900">Select File</label>
-                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center bg-slate-50/50 hover:bg-slate-50 transition-colors">
-                    <input type="file" id="file-upload" className="hidden" onChange={e => setUploadFile(e.target.files ? e.target.files[0] : null)} required />
-                    <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3">
-                      <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center text-blue-600"><UploadCloud className="h-6 w-6" /></div>
-                      <div><span className="text-blue-600 font-medium text-sm hover:underline">Click to browse</span><span className="text-slate-500 text-sm"> or drag and drop</span></div>
-                      <p className="text-xs text-slate-400">PDF, JPG, PNG up to 10MB</p>
-                    </label>
-                    {uploadFile && (
-                      <div className="mt-4 p-3 bg-white border border-slate-200 rounded-lg flex items-center gap-3 text-left">
-                        <FileIcon className="h-8 w-8 text-blue-500 shrink-0" />
-                        <div className="flex-1 min-w-0"><p className="text-sm font-medium text-slate-900 truncate">{uploadFile.name}</p><p className="text-xs text-slate-500">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB</p></div>
-                      </div>
-                    )}
+            {step === 2 ? (
+              <div className="space-y-6">
+                <FormField id="upload-title" label="Document title" required>
+                  <Input id="upload-title" value={uploadTitle} onChange={(event) => setUploadTitle(event.target.value)} placeholder="Example: Complete blood count results" required />
+                </FormField>
+                <FormField id="upload-notes" label="Clinical notes" hint="Optional context. Do not add information unrelated to the selected patient visit.">
+                  <textarea id="upload-notes" value={uploadDesc} onChange={(event) => setUploadDesc(event.target.value)} rows={4} className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm focus-visible:ring-2 focus-visible:ring-blue-600" />
+                </FormField>
+                <FormField id="file-upload" label="File" hint="Choose the clinical file from your device. The server applies content validation and malware scanning." required>
+                  <input id="file-upload" type="file" className="block min-h-11 w-full rounded-xl border border-slate-300 bg-white p-2 text-sm file:mr-3 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-semibold file:text-blue-800" onChange={(event) => setUploadFile(event.target.files?.[0] || null)} required />
+                </FormField>
+                {uploadFile ? (
+                  <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3" role="status">
+                    <FileIcon className="h-7 w-7 shrink-0 text-blue-600" aria-hidden="true" />
+                    <div className="min-w-0"><p className="truncate text-sm font-semibold text-slate-900">{uploadFile.name}</p><p className="text-xs text-slate-600">{(uploadFile.size / 1024 / 1024).toFixed(2)} MB selected</p></div>
                   </div>
-                </div>
-
-                <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={() => setStep(1)}>Back</Button>
-                  <Button type="button" onClick={() => setStep(3)} disabled={!canProceedToStep3} className="gap-2">Review <ChevronRight className="h-4 w-4" /></Button>
-                </div>
+                ) : null}
+                <div className="flex justify-between gap-3 pt-4"><Button type="button" variant="outline" onClick={() => setStep(1)}>Back</Button><Button type="button" onClick={() => setStep(3)} disabled={!canProceedToStep3}>Review <ChevronRight className="ml-2 h-4 w-4" aria-hidden="true" /></Button></div>
               </div>
-            )}
+            ) : null}
 
-            {step === 3 && (
-              <div className="space-y-6 animate-in slide-in-from-right-4">
-                <div className="bg-slate-50 rounded-xl p-6 border border-slate-200 space-y-4">
-                  <h3 className="font-semibold text-slate-900 border-b border-slate-200 pb-2">Upload Summary</h3>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
-                    <div className="text-slate-500">Target Patient</div>
-                    <div className="col-span-2 font-medium text-slate-900 flex items-center gap-2"><User className="h-4 w-4 text-slate-400" />Patient #{selectedVisit ? selectedVisit.patient_id * 13 : '—'}</div>
-                    <div className="text-slate-500">Category</div>
-                    <div className="col-span-2 font-medium text-slate-900 capitalize">{uploadType.replace('_', ' ')}</div>
-                    <div className="text-slate-500">Title</div>
-                    <div className="col-span-2 font-medium text-slate-900">{uploadTitle}</div>
-                    <div className="text-slate-500">File</div>
-                    <div className="col-span-2 font-medium text-slate-900 flex items-center gap-2"><FileUp className="h-4 w-4 text-blue-500" />{uploadFile?.name}</div>
-                  </div>
+            {step === 3 ? (
+              <div className="space-y-6">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-5">
+                  <h3 className="font-semibold text-slate-950">Upload summary</h3>
+                  <dl className="mt-4 grid grid-cols-[minmax(7rem,0.7fr)_1.3fr] gap-x-4 gap-y-3 text-sm">
+                    <dt className="text-slate-600">Patient</dt><dd className="font-semibold text-slate-950"><span className="inline-flex items-center gap-2"><User className="h-4 w-4 text-slate-500" aria-hidden="true" />{selectedVisit ? `Patient ID ${selectedVisit.patient_id}` : 'Not selected'}</span></dd>
+                    <dt className="text-slate-600">Visit</dt><dd className="font-semibold text-slate-950">{selectedVisit ? `Visit ID ${selectedVisit.id}` : 'Not selected'}</dd>
+                    <dt className="text-slate-600">Category</dt><dd className="font-semibold capitalize text-slate-950">{uploadType.replace('_', ' ')}</dd>
+                    <dt className="text-slate-600">Title</dt><dd className="font-semibold text-slate-950">{uploadTitle}</dd>
+                    <dt className="text-slate-600">File</dt><dd className="inline-flex min-w-0 items-center gap-2 font-semibold text-slate-950"><FileUp className="h-4 w-4 shrink-0 text-blue-600" aria-hidden="true" /><span className="truncate">{uploadFile?.name}</span></dd>
+                  </dl>
                 </div>
-
-                <div className="flex justify-between pt-4">
-                  <Button type="button" variant="outline" onClick={() => setStep(2)}>Edit Details</Button>
-                  <Button type="submit" disabled={uploading} className="bg-blue-600 hover:bg-blue-700 min-w-[140px]">
-                    {uploading ? (
-                      <span className="flex items-center gap-2"><div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>Uploading...</span>
-                    ) : (
-                      <span className="flex items-center gap-2"><UploadCloud className="h-4 w-4" /> Confirm Upload</span>
-                    )}
-                  </Button>
-                </div>
+                <div className="flex justify-between gap-3 pt-4"><Button type="button" variant="outline" onClick={() => setStep(2)}>Edit details</Button><Button type="submit" disabled={uploading}>{uploading ? 'Uploading securely…' : <><UploadCloud className="mr-2 h-4 w-4" aria-hidden="true" />Confirm upload</>}</Button></div>
               </div>
-            )}
+            ) : null}
           </form>
         </CardContent>
       </Card>
