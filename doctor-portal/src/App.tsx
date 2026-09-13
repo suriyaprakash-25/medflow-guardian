@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
+import { FeedbackState } from '@shared/ui/FeedbackState';
 import Login from './pages/Login';
 import Layout from './components/Layout';
 import DashboardView from './pages/DashboardView';
@@ -12,22 +13,19 @@ import AccessControl from './pages/AccessControl';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import { ensureSession } from './lib/api';
-import './App.css';
 
 function ProtectedRoute() {
   const [authorized, setAuthorized] = useState<boolean | null>(null);
 
   useEffect(() => {
     let active = true;
-    ensureSession().then((ok) => {
-      if (active) setAuthorized(ok);
-    });
-    return () => {
-      active = false;
-    };
+    ensureSession().then((ok) => { if (active) setAuthorized(ok); });
+    return () => { active = false; };
   }, []);
 
-  if (authorized === null) return null;
+  if (authorized === null) {
+    return <main className="grid min-h-screen place-items-center p-6"><div className="w-full max-w-md"><FeedbackState tone="loading" title="Restoring secure session" message="Checking your authenticated clinician session." /></div></main>;
+  }
   if (!authorized) return <Navigate to="/login" replace />;
   return <Layout />;
 }
@@ -35,7 +33,7 @@ function ProtectedRoute() {
 function App() {
   return (
     <Router>
-      <Toaster position="top-right" />
+      <Toaster position="top-right" toastOptions={{ duration: 4500 }} />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route element={<ProtectedRoute />}>
@@ -49,6 +47,7 @@ function App() {
           <Route path="/profile" element={<Profile />} />
         </Route>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>
     </Router>
   );

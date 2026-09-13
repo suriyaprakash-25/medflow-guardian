@@ -1,13 +1,19 @@
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { api as axios, setAccessToken } from '../lib/api';
+import { AuthShell } from '@shared/ui/AuthShell';
+import { Button } from '@shared/ui/Button';
+import { FeedbackState } from '@shared/ui/FeedbackState';
+import { FormField } from '@shared/ui/FormField';
+import { Input } from '@shared/ui/Input';
+import { api, setAccessToken } from '../lib/api';
 
 export default function Login() {
-  const [email, setEmail] = useState('doctor@demo.com');
-  const [password, setPassword] = useState('password');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const [preAuthToken, setPreAuthToken] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const completeLogin = (accessToken: string) => {
@@ -16,85 +22,77 @@ export default function Login() {
     navigate('/dashboard');
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: FormEvent) => {
+    event.preventDefault();
     setError('');
+    setLoading(true);
     try {
       const formData = new URLSearchParams();
-      formData.append('username', email);
+      formData.append('username', email.trim());
       formData.append('password', password);
-
-      const response = await axios.post('/api/auth/login', formData, {
+      const response = await api.post('/api/auth/login', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
-
       if (response.data.role !== 'doctor') {
-        setError('Only doctors can log in here.');
+        setError('This sign-in page is only for clinician accounts.');
         return;
       }
-
       if (response.data.mfa_required) {
         setPreAuthToken(response.data.access_token);
+        setPassword('');
         return;
       }
-
       completeLogin(response.data.access_token);
     } catch {
-      setError('Login failed. Please check credentials.');
+      setError('Sign in failed. Verify your email and password, then try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleMfaVerify = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleMfaVerify = async (event: FormEvent) => {
+    event.preventDefault();
     if (!preAuthToken) return;
     setError('');
+    setLoading(true);
     try {
-      const response = await axios.post(
-        '/api/auth/mfa/verify',
-        { code: mfaCode },
-        { headers: { Authorization: `Bearer ${preAuthToken}` } },
-      );
+      const response = await api.post('/api/auth/mfa/verify', { code: mfaCode.trim() }, {
+        headers: { Authorization: `Bearer ${preAuthToken}` },
+      });
       completeLogin(response.data.access_token);
     } catch {
-      setError('Invalid or expired MFA code. Please try again.');
+      setError('The verification code is invalid or expired. Request a new code and try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <div className="container center-page">
-      <div className="card login-card">
-        <h1>Doctor Portal</h1>
-        {preAuthToken ? (
-          <form onSubmit={handleMfaVerify}>
-            {error && <div className="error">{error}</div>}
-            <div className="form-group">
-              <label>Authenticator code</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value)}
-                required
-              />
-            </div>
-            <button type="submit" className="btn-primary">Verify MFA</button>
-          </form>
-        ) : (
-          <form onSubmit={handleLogin}>
-            {error && <div className="error">{error}</div>}
-            <div className="form-group">
-              <label>Email</label>
-              <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
-            </div>
-            <div className="form-group">
-              <label>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required />
-            </div>
-            <button type="submit" className="btn-primary">Sign In</button>
-          </form>
-        )}
-      </div>
-    </div>
+    <AuthShell
+      portalLabel="Clinician portal"
+      title="Clinical work without bypassing patient policy."
+      description="Triage, patient records, access requests and uploads remain bound to authenticated clinician identity, organization and consent context."
+    >
+      {error ? <div className="mb-5"><FeedbackState tone="error" title="Unable to sign in" message={error} compact /></div> : null}
+      {preAuthToken ? (
+        <form onSubmit={handleMfaVerify} className="grid gap-5">
+          <FormField id="doctor-mfa" label="Authenticator code" hint="Enter the current code from your authenticator app." required>
+            <Input id="doctor-mfa" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} aria-describedby="doctor-mfa-hint" required />
+          </FormField>
+          <Button type="submit" disabled={loading || mfaCode.trim().length === 0} className="w-full">{loading ? 'Verifying…' : 'Verify and continue'}</Button>
+          <Button type="button" variant="ghost" className="w-full" onClick={() => { setPreAuthToken(null); setMfaCode(''); setError(''); }}>Use a different account</Button>
+        </form>
+      ) : (
+        <form onSubmit={handleLogin} className="grid gap-5">
+          <FormField id="doctor-email" label="Work email" required>
+            <Input id="doctor-email" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required />
+          </FormField>
+          <FormField id="doctor-password" label="Password" required>
+            <Input id="doctor-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+          </FormField>
+          <Button type="submit" disabled={loading || !email.trim() || !password} className="w-full">{loading ? 'Signing in…' : 'Sign in securely'}</Button>
+        </form>
+      )}
+    </AuthShell>
   );
 }
