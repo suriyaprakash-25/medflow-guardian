@@ -6,6 +6,7 @@ Repository implementation is complete on the P1 integration branch. The followin
 - clinician FHIR consent selection: server-resolved and fail-closed
 - Supabase/ClamAV production controls: configured and readiness-enforced
 - authenticated HTTP FHIR + official HL7 validation: automated in CI
+- generated all-endpoints Postman contract: refreshed against the current route surface
 - OIDC federation: intentionally deferred because it is not a current product requirement
 - stale architecture reports: reconciled
 - full PR CI/security checks: required before merge
