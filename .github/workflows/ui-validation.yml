@@ -42,6 +42,7 @@ jobs:
       # without requiring or mocking production Supabase infrastructure.
       SUPABASE_SERVICE_ROLE_KEY: placeholder-ui-validation
       SUPABASE_STORAGE_BUCKET: medflow-bucket
+      API_URL: http://127.0.0.1:8080
       PATIENT_URL: http://127.0.0.1:5174
       DOCTOR_URL: http://127.0.0.1:5175
       ADMIN_URL: http://127.0.0.1:5176
@@ -100,47 +101,9 @@ jobs:
       - name: Install Chromium
         run: npx --prefix ui-tests playwright install --with-deps chromium
 
-      - name: Start application stack
-        run: |
-          cd backend
-          uvicorn app.main:app --host 127.0.0.1 --port 8080 > "$RUNNER_TEMP/ui-api.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/ui-api.pid"
-          cd ..
-          npm run dev --prefix patient-app -- --host 127.0.0.1 > "$RUNNER_TEMP/patient-ui.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/patient-ui.pid"
-          npm run dev --prefix doctor-portal -- --host 127.0.0.1 > "$RUNNER_TEMP/doctor-ui.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/doctor-ui.pid"
-          npm run dev --prefix admin-portal -- --host 127.0.0.1 > "$RUNNER_TEMP/admin-ui.log" 2>&1 &
-          echo $! > "$RUNNER_TEMP/admin-ui.pid"
-
-      - name: Wait for application stack
-        run: |
-          python - <<'PY'
-          import time
-          import httpx
-          urls = [
-              'http://127.0.0.1:8080/ready',
-              'http://127.0.0.1:5174/login',
-              'http://127.0.0.1:5175/login',
-              'http://127.0.0.1:5176/login',
-          ]
-          deadline = time.time() + 60
-          pending = set(urls)
-          while pending and time.time() < deadline:
-              for url in list(pending):
-                  try:
-                      response = httpx.get(url, timeout=2)
-                      if response.status_code < 500:
-                          pending.remove(url)
-                  except httpx.HTTPError:
-                      pass
-              if pending:
-                  time.sleep(1)
-          if pending:
-              raise SystemExit(f'Application stack did not become ready: {sorted(pending)}')
-          PY
-
       - name: Run Playwright journeys, Axe, keyboard and visual regression
+        # ui-tests/playwright.config.ts owns backend + Vite startup/readiness and
+        # tears those processes down with the Playwright run.
         run: npm test --prefix ui-tests
 
       - name: Upload UI validation evidence
@@ -152,11 +115,3 @@ jobs:
             ui-tests/playwright-report/
             ui-tests/test-results/
           if-no-files-found: ignore
-
-      - name: Print application logs on failure
-        if: failure()
-        run: |
-          for file in "$RUNNER_TEMP/ui-api.log" "$RUNNER_TEMP/patient-ui.log" "$RUNNER_TEMP/doctor-ui.log" "$RUNNER_TEMP/admin-ui.log"; do
-            echo "===== $file ====="
-            cat "$file" || true
-          done
