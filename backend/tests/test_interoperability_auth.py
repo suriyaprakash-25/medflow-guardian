@@ -53,7 +53,7 @@ def test_fhir_export_requires_explicit_purpose(client):
         app.dependency_overrides.clear()
 
 
-def test_practitioner_export_releases_only_authorized_hospital_records(client, db_session):
+def test_practitioner_export_resolves_consent_and_releases_only_scoped_hospital_records(client, db_session):
     patient = User(
         id=1101,
         email="scope-patient@example.com",
@@ -146,9 +146,21 @@ def test_practitioner_export_releases_only_authorized_hospital_records(client, d
 
     app.dependency_overrides[get_current_user] = lambda: doctor
     try:
+        missing_scope = client.get(
+            f"/api/interoperability/patients/{patient.id}/export",
+            params={"purpose": "TREATMENT"},
+        )
+        assert missing_scope.status_code == 422
+
+        wrong_scope = client.get(
+            f"/api/interoperability/patients/{patient.id}/export",
+            params={"purpose": "TREATMENT", "hospital_id": hospital_b.id},
+        )
+        assert wrong_scope.status_code == 403
+
         response = client.get(
             f"/api/interoperability/patients/{patient.id}/export",
-            params={"purpose": "TREATMENT", "consent_id": consent.id},
+            params={"purpose": "TREATMENT", "hospital_id": hospital_a.id},
         )
         assert response.status_code == 200
         resources = [entry["resource"] for entry in response.json()["entry"]]
