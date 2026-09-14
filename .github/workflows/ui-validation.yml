@@ -37,7 +37,10 @@ jobs:
       DATABASE_URL: postgresql://medflow:password@127.0.0.1:5432/medflow_ui
       SECRET_KEY: ui_validation_secret_key
       SUPABASE_URL: http://127.0.0.1:8000
-      SUPABASE_SERVICE_ROLE_KEY: dummy_key
+      # StorageService treats placeholder credentials as local-test storage.
+      # This lets the P0 browser workflow exercise real protected-document bytes
+      # without requiring or mocking production Supabase infrastructure.
+      SUPABASE_SERVICE_ROLE_KEY: placeholder-ui-validation
       SUPABASE_STORAGE_BUCKET: medflow-bucket
       PATIENT_URL: http://127.0.0.1:5174
       DOCTOR_URL: http://127.0.0.1:5175
