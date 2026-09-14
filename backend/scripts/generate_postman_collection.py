@@ -24,6 +24,13 @@ PUBLIC_EXPECTATIONS = {
     ("POST", "/api/auth/mfa/verify"): 401,
     ("POST", "/api/auth/refresh"): 401,
     ("POST", "/api/auth/logout"): 200,
+    # OIDC entry points must be callable before MedFlow authentication exists.
+    # CI intentionally has no external provider configured, so challenge fails
+    # closed as an unknown provider while an empty exchange body fails schema
+    # validation before any upstream trust decision is attempted.
+    ("GET", "/api/auth/oidc/providers"): 200,
+    ("POST", "/api/auth/oidc/{provider}/challenge"): 404,
+    ("POST", "/api/auth/oidc/{provider}/exchange"): 422,
 }
 
 
