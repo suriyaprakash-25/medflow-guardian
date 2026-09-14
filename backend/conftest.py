@@ -16,12 +16,9 @@ def _is_truthy(name: str) -> bool:
 
 
 def _resolve_test_database_url() -> str:
+    is_ci = _is_truthy("CI") or _is_truthy("GITHUB_ACTIONS")
     explicit_test_url = os.getenv("TEST_DATABASE_URL", "").strip()
-    ci_database_url = (
-        os.getenv("DATABASE_URL", "").strip()
-        if _is_truthy("CI") or _is_truthy("GITHUB_ACTIONS")
-        else ""
-    )
+    ci_database_url = os.getenv("DATABASE_URL", "").strip() if is_ci else ""
     database_url = explicit_test_url or ci_database_url or _DEFAULT_LOCAL_TEST_DATABASE_URL
     parsed = urlparse(database_url)
 
@@ -32,8 +29,13 @@ def _resolve_test_database_url() -> str:
         )
 
     database_name = parsed.path.lstrip("/").split("?", 1)[0]
-    if "test" not in database_name.lower() and not _is_truthy(
-        "ALLOW_UNSAFE_TEST_DATABASE"
+    # CI also validates a freshly restored clone named medflow_restore. It is local,
+    # disposable, and created inside the workflow, so allow that exact name only in CI.
+    is_known_ci_restore = is_ci and database_name == "medflow_restore"
+    if (
+        "test" not in database_name.lower()
+        and not is_known_ci_restore
+        and not _is_truthy("ALLOW_UNSAFE_TEST_DATABASE")
     ):
         raise RuntimeError(
             "Refusing to run tests against a database whose name does not contain "
