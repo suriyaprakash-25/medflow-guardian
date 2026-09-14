@@ -9,5 +9,6 @@ from .audit import AuditLog
 from .notification import Notification
 from .consent import Consent, ConsentPolicyVersion, ConsentState
 from .auth import Session, UserMFA
+from .oidc import OIDCIdentity
 from .clinical import Medication, Prescription, LabResult, ClinicalNote
 from .privacy import PrivacyLegalHold, PrivacyRequest
