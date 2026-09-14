@@ -5,6 +5,7 @@ import { Button } from '@shared/ui/Button';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { FormField } from '@shared/ui/FormField';
 import { Input } from '@shared/ui/Input';
+import type { LoginResponseContract } from '@shared/api/contracts';
 import { api, setAccessToken } from '../lib/api';
 
 export default function Login() {
@@ -30,7 +31,7 @@ export default function Login() {
       const formData = new URLSearchParams();
       formData.append('username', email.trim());
       formData.append('password', password);
-      const response = await api.post('/api/auth/login', formData, {
+      const response = await api.post<LoginResponseContract>('/api/auth/login', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
       if (response.data.role !== 'doctor') {
@@ -56,7 +57,7 @@ export default function Login() {
     setError('');
     setLoading(true);
     try {
-      const response = await api.post('/api/auth/mfa/verify', { code: mfaCode.trim() }, {
+      const response = await api.post<LoginResponseContract>('/api/auth/mfa/verify', { code: mfaCode.trim() }, {
         headers: { Authorization: `Bearer ${preAuthToken}` },
       });
       completeLogin(response.data.access_token);
