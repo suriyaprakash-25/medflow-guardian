@@ -77,7 +77,7 @@ def test_serialized_loser_cannot_approve_after_cancel_wins():
         _patient_context(request)
     )
     assert decision.allowed is False
-    assert "no longer pending" in decision.detail.lower()
+    assert "cancelled" in decision.detail.lower()
 
 
 def test_approval_and_cancel_both_lock_authoritative_request_row():
