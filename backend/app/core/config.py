@@ -69,6 +69,12 @@ class Settings:
     ALGORITHM = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES = 15
 
+    OIDC_STATE_TTL_SECONDS = int(os.getenv("OIDC_STATE_TTL_SECONDS", "900"))
+    if not 900 <= OIDC_STATE_TTL_SECONDS <= 3600:
+        raise ValueError(
+            "OIDC_STATE_TTL_SECONDS must be between 900 and 3600 seconds"
+        )
+
     # Only the web role signs JWTs/decrypts MFA secrets. A dedicated production
     # malware worker intentionally does not need access to those web-only keys.
     _web_production = ENV == "production" and SERVICE_ROLE == "web"
