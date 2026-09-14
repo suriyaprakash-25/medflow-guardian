@@ -5,19 +5,8 @@ import { Button } from '@shared/ui/Button';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { FormField } from '@shared/ui/FormField';
 import { Input } from '@shared/ui/Input';
+import type { AuthUserContract, LoginResponseContract } from '@shared/api/contracts';
 import { api, clearAccessToken, setAccessToken } from '../lib/api';
-
-interface Membership {
-  role?: string;
-}
-
-interface AdminIdentity {
-  system_role?: string;
-  role?: string;
-  memberships?: Membership[];
-  full_name?: string;
-  email?: string;
-}
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -29,8 +18,8 @@ export default function Login() {
   const navigate = useNavigate();
 
   const completeAdminLogin = async (accessToken: string) => {
-    const userRes = await api.get('/api/auth/me', { headers: { Authorization: `Bearer ${accessToken}` } });
-    const user = userRes.data as AdminIdentity;
+    const userRes = await api.get<AuthUserContract>('/api/auth/me', { headers: { Authorization: `Bearer ${accessToken}` } });
+    const user = userRes.data;
     const isPlatformAdmin = user.system_role === 'platform_admin';
     const isOrgAdmin = Array.isArray(user.memberships) && user.memberships.some((membership) => membership.role === 'admin');
 
@@ -55,7 +44,7 @@ export default function Login() {
       const formData = new URLSearchParams();
       formData.append('username', email.trim());
       formData.append('password', password);
-      const response = await api.post('/api/auth/login', formData, {
+      const response = await api.post<LoginResponseContract>('/api/auth/login', formData, {
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       });
       if (response.data.mfa_required) {
@@ -78,7 +67,7 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const response = await api.post('/api/auth/mfa/verify', { code: mfaCode.trim() }, {
+      const response = await api.post<LoginResponseContract>('/api/auth/mfa/verify', { code: mfaCode.trim() }, {
         headers: { Authorization: `Bearer ${preAuthToken}` },
       });
       await completeAdminLogin(response.data.access_token);
