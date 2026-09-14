@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import { IconButton } from './IconButton';
 
@@ -59,7 +60,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
     }
   };
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-[2px] sm:items-center sm:p-4" onMouseDown={(event) => {
       if (event.target === event.currentTarget) onOpenChange(false);
     }}>
@@ -84,6 +85,7 @@ export function Dialog({ open, onOpenChange, title, description, children, foote
         <div className="px-5 py-5 sm:px-6">{children}</div>
         {footer ? <div className="border-t border-slate-100 px-5 py-4 sm:px-6">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
