@@ -75,7 +75,7 @@ export default function Layout() {
           </div>
           <p className="hidden text-xs text-slate-500 sm:block">Administrative changes are server-authorized and audited.</p>
         </header>
-        <main id="admin-main" className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/50 p-4 pb-28 md:p-8 md:pb-8" tabIndex={-1}>
+        <main id="admin-main" className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/50 p-4 pb-28 md:p-8 md:pb-8 focus:outline-none" tabIndex={-1}>
           <div className="mx-auto min-w-0 max-w-6xl"><Outlet /></div>
         </main>
 

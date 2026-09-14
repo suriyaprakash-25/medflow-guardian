@@ -706,6 +706,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen w-full bg-slate-50 overflow-hidden font-sans">
+      <a href="#doctor-main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-blue-700">Skip to main content</a>
       <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0 shadow-xl z-10">
         <div className="p-6">
           <div className="flex items-center gap-3 text-primary">
@@ -775,6 +776,9 @@ export default function Layout() {
           </div>
 
           <div className="flex items-center gap-6">
+            <div className="md:hidden flex items-center">
+              <ConnectionStatus status={wsStatus} />
+            </div>
             <div className="hidden md:flex items-center gap-3">
               <div className="text-right">
                 <p className="text-sm font-semibold text-slate-900 leading-none">
@@ -789,7 +793,7 @@ export default function Layout() {
           </div>
         </header>
 
-        <main id="doctor-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8 bg-slate-50 relative" tabIndex={-1}>
+        <main id="doctor-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8 bg-slate-50 relative focus:outline-none" tabIndex={-1}>
           <div className="mx-auto max-w-7xl animate-in fade-in duration-500">
             <Outlet context={contextValue} />
           </div>

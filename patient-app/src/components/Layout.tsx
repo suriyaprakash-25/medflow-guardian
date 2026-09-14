@@ -464,6 +464,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
+      <a href="#patient-main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-blue-700">Skip to main content</a>
       {/* Sidebar Layout */}
       <div className="w-64 bg-slate-900 text-white flex flex-col hidden md:flex shrink-0">
         <div className="p-6">
@@ -614,6 +615,9 @@ export default function Layout() {
           </div>
           
           <div className="flex items-center gap-4">
+            <div className="md:hidden flex items-center">
+              <ConnectionStatus status={wsStatus} />
+            </div>
             <button
               type="button"
               aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
@@ -630,7 +634,7 @@ export default function Layout() {
             </div>
           </div>
         </header>
-        <main id="patient-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8" tabIndex={-1}>
+        <main id="patient-main" className="flex-1 overflow-y-auto p-4 pb-28 md:p-6 md:pb-6 lg:p-8 focus:outline-none" tabIndex={-1}>
           <div className="mx-auto max-w-6xl">
             <Outlet context={contextValue} />
           </div>
