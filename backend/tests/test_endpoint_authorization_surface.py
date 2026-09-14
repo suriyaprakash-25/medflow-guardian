@@ -20,7 +20,12 @@ REVIEWED_DELEGATES = {
     "interoperability.py": {"_import_canonical_fhir_consent("},
     "privacy.py": {"_authorize("},
 }
-PUBLIC_ENDPOINTS = {"interoperability.py": {"fhir_capability_statement"}}
+# These routes are intentionally pre-authentication/bootstrap surfaces. They do
+# not release MedFlow resources or bypass Model A authorization of protected data.
+PUBLIC_ENDPOINTS = {
+    "interoperability.py": {"fhir_capability_statement"},
+    "oidc.py": {"oidc_providers", "oidc_challenge", "oidc_exchange"},
+}
 
 
 def _route_functions(path: Path):
