@@ -12,7 +12,7 @@ export interface AuthShellProps {
 export function AuthShell({ portalLabel, title, description, children, securityNote }: AuthShellProps) {
   return (
     <main className="min-h-screen bg-slate-50 px-4 py-8 sm:px-6 lg:px-8">
-      <a href="#auth-form" className="skip-link">Skip to sign in</a>
+      <a href="#auth-form" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-blue-700">Skip to sign in</a>
       <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
         <section className="hidden rounded-3xl bg-slate-950 p-10 text-white shadow-2xl lg:block" aria-labelledby="auth-intro-title">
           <div className="mb-8 inline-flex items-center gap-3 rounded-2xl bg-white/10 px-4 py-3">

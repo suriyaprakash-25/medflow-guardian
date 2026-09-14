@@ -38,7 +38,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen max-w-full overflow-x-hidden bg-slate-50 font-sans">
-      <a href="#admin-main" className="skip-link">Skip to main content</a>
+      <a href="#admin-main" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:p-4 focus:bg-white focus:text-blue-700">Skip to main content</a>
       <aside className="relative z-20 hidden w-72 shrink-0 flex-col bg-slate-950 text-white shadow-2xl md:flex" aria-label="Admin navigation">
         <div className="flex items-center gap-3 border-b border-slate-800 p-6">
           <div className="rounded-xl bg-blue-700 p-2"><ShieldCheck className="h-7 w-7 text-white" aria-hidden="true" /></div>
