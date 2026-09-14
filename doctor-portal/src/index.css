@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../frontend-shared";
 @import "../../frontend-shared/global.css";
 
 /* Release accessibility hardening: muted/brand text must remain readable on both
