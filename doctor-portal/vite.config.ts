@@ -7,8 +7,10 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@shared': path.resolve(import.meta.dirname, '../frontend-shared')
-    }
+      '@shared': path.resolve(import.meta.dirname, '../frontend-shared'),
+      'react/jsx-runtime': path.resolve(import.meta.dirname, 'node_modules/react/jsx-runtime.js'),
+    },
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     port: 5175,

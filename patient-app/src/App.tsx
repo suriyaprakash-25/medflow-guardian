@@ -12,6 +12,7 @@ import AccessHistory from './pages/AccessHistory';
 import Notifications from './pages/Notifications';
 import Profile from './pages/Profile';
 import ClinicalHistory from './pages/ClinicalHistory';
+import Consents from './pages/Consents';
 import { ensureSession } from './lib/api';
 
 function ProtectedRoute() {
@@ -43,6 +44,7 @@ function App() {
           <Route path="/clinical-history" element={<ClinicalHistory />} />
           <Route path="/access-requests" element={<AccessRequests />} />
           <Route path="/access-history" element={<AccessHistory />} />
+          <Route path="/consents" element={<Consents />} />
           <Route path="/notifications" element={<Notifications />} />
           <Route path="/profile" element={<Profile />} />
         </Route>

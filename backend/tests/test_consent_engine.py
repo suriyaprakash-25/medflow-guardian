@@ -1,13 +1,14 @@
-import pytest
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from app.services.consent import ConsentService
 from app.services.authorization import AuthorizationContext, Operation, ResourceType, DenialReason
 from app.models.user import User
 from app.models.consent import Consent
 
 class MockPolicyVersion:
-    def __init__(self, payload):
+    def __init__(self, payload, valid_from=None, valid_until=None):
         self.policy_payload = payload
+        self.valid_from = valid_from
+        self.valid_until = valid_until
 
 class MockConsentState:
     def __init__(self, state_id, status, policy):
@@ -105,3 +106,40 @@ def test_consent_service_denies_invalid_purpose():
     assert decision.allowed is False
     assert decision.reason == DenialReason.OPERATION_NOT_ALLOWED
     assert "PURPOSE_NOT_ALLOWED" in decision.detail
+
+
+def test_consent_service_enforces_start_inclusive_end_exclusive_period():
+    now = datetime.now(timezone.utc)
+    actor = User(id=2, role="doctor")
+
+    def evaluate(policy):
+        db = MockDB(MockConsentState(state_id=43, status="active", policy=policy))
+        return ConsentService(db).evaluate(
+            AuthorizationContext(
+                actor=actor,
+                operation=Operation.DOWNLOAD,
+                resource_type=ResourceType.DOCUMENT,
+                db=db,
+                patient_id=1,
+                relationship_context=MockRelationshipContext(consent_id=10),
+            ),
+            purpose="TREATMENT",
+        )
+
+    future = MockPolicyVersion(
+        {"allowed_purposes": ["TREATMENT"], "allowed_operations": ["download"]},
+        valid_from=now + timedelta(minutes=5),
+    )
+    expired = MockPolicyVersion(
+        {"allowed_purposes": ["TREATMENT"], "allowed_operations": ["download"]},
+        valid_until=now - timedelta(seconds=1),
+    )
+    active = MockPolicyVersion(
+        {"allowed_purposes": ["TREATMENT"], "allowed_operations": ["download"]},
+        valid_from=now - timedelta(minutes=5),
+        valid_until=now + timedelta(minutes=5),
+    )
+
+    assert evaluate(future).reason == DenialReason.CONSENT_NOT_YET_VALID
+    assert evaluate(expired).reason == DenialReason.CONSENT_EXPIRED
+    assert evaluate(active).allowed is True

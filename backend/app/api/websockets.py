@@ -11,6 +11,7 @@ from jwt import InvalidTokenError
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.time import as_utc
 from app.api.dependencies import get_db, _session_is_active
 from app.models.user import User
 
@@ -301,7 +302,7 @@ def verify_token(token: str, db: Session) -> Optional[WebSocketPrincipal]:
             return None
 
         expires_at = datetime.fromtimestamp(expires_at_raw, tz=timezone.utc)
-        if expires_at <= datetime.now(timezone.utc):
+        if as_utc(expires_at) <= datetime.now(timezone.utc):
             return None
     except (InvalidTokenError, ValueError, TypeError, OverflowError):
         return None
@@ -343,7 +344,7 @@ async def websocket_endpoint(websocket: WebSocket, db: Session = Depends(get_db)
     try:
         while True:
             seconds_remaining = (
-                principal.expires_at - datetime.now(timezone.utc)
+                as_utc(principal.expires_at) - datetime.now(timezone.utc)
             ).total_seconds()
             if seconds_remaining <= 0:
                 await websocket.close(code=1008, reason="Access token expired")

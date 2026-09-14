@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import originalAxios from 'axios';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/websocket';
 import { useNavigate, Outlet, Link, useLocation, useOutletContext } from 'react-router-dom';
-import { Activity, FileText, Lock, History, User, Bell, LogOut, Calendar } from 'lucide-react';
+import { Activity, FileText, Lock, History, User, Bell, LogOut, Calendar, ShieldCheck } from 'lucide-react';
 import { ConnectionStatus } from '@shared/ui/ConnectionStatus';
 import { toast } from 'react-hot-toast';
 
@@ -115,7 +115,7 @@ export default function Layout() {
 
   const fetchPatientProfile = useCallback(async () => {
     try {
-      const res = await axios.get('/api/users/patient-profile', { headers });
+      const res = await api.get('/api/users/patient-profile', { headers });
       setPatientProfile(res.data);
     } catch (error) {
       console.error(error);
@@ -124,7 +124,7 @@ export default function Layout() {
 
   const fetchPatientVisits = useCallback(async () => {
     try {
-      const res = await axios.get('/api/visits/patient', { headers });
+      const res = await api.get('/api/visits/patient', { headers });
       setPatientVisits(res.data);
       if (res.data.length > 0 && !activeDoctorId) {
         setActiveDoctorId(res.data[0].doctor_id);
@@ -136,7 +136,7 @@ export default function Layout() {
 
   const fetchRequests = useCallback(async () => {
     try {
-      const res = await axios.get('/api/triage/patient', { headers });
+      const res = await api.get('/api/triage/patient', { headers });
       setRequests(res.data);
     } catch (error) {
       if (originalAxios.isAxiosError(error) && error.response?.status === 401) handleLogout();
@@ -146,7 +146,7 @@ export default function Layout() {
   const fetchMessages = useCallback(async () => {
     if (!activeDoctorId) return;
     try {
-      const res = await axios.get(`/api/messages/${activeDoctorId}`, { headers });
+      const res = await api.get(`/api/messages/${activeDoctorId}`, { headers });
       setMessages(res.data);
     } catch (error) {
       console.error(error);
@@ -155,7 +155,7 @@ export default function Layout() {
 
   const fetchReadings = useCallback(async () => {
     try {
-      const res = await axios.get('/api/readings/patient', { headers });
+      const res = await api.get('/api/readings/patient', { headers });
       setReadings(res.data);
     } catch (error) {
       console.error(error);
@@ -168,7 +168,7 @@ export default function Layout() {
   
   const fetchDocuments = useCallback(async () => {
     try {
-      const res = await axios.get('/api/documents/patient', { headers });
+      const res = await api.get('/api/documents/patient', { headers });
       setDocuments(res.data);
     } catch (error) {
       console.error(error);
@@ -181,8 +181,8 @@ export default function Layout() {
   const fetchAccessData = useCallback(async () => {
     try {
       const [reqs, grants] = await Promise.all([
-        axios.get('/api/access-requests/patient', { headers }),
-        axios.get('/api/access-grants/patient', { headers })
+        api.get('/api/access-requests/patient', { headers }),
+        api.get('/api/access-grants/patient', { headers })
       ]);
       setAccessRequests(reqs.data);
       setAccessGrants(grants.data);
@@ -197,8 +197,8 @@ export default function Layout() {
   const fetchPhase4Data = useCallback(async () => {
     try {
       const [notifs, audits] = await Promise.all([
-        axios.get('/api/notifications', { headers }),
-        axios.get('/api/audit/patient', { headers })
+        api.get('/api/notifications', { headers }),
+        api.get('/api/audit/patient', { headers })
       ]);
       setNotifications(notifs.data);
       setAuditLogs(audits.data);
@@ -213,7 +213,7 @@ export default function Layout() {
     // Token is guaranteed by ProtectedRoute
     
     // Fetch authoritative identity from backend
-    axios.get('/api/auth/me', { headers }).then((res) => {
+    api.get('/api/auth/me', { headers }).then((res) => {
       if (res.data.system_role !== 'patient' && res.data.role !== 'patient') {
         toast.error('Session mismatch: You are logged in with a non-patient account. Please log in again.');
         handleLogout();
@@ -235,7 +235,7 @@ export default function Layout() {
 
     const reconnectAfterAuthFailure = async () => {
       try {
-        const response = await axios.post('/api/auth/refresh');
+        const response = await api.post('/api/auth/refresh');
         const refreshedToken = response.data?.access_token;
         if (typeof refreshedToken !== 'string' || !refreshedToken) {
           throw new Error('Refresh response did not include an access token');
@@ -334,7 +334,7 @@ export default function Layout() {
       return;
     }
     try {
-      await axios.post('/api/triage/', { symptoms, hospital_id: parseInt(selectedHospitalId) }, { headers });
+      await api.post('/api/triage/', { symptoms, hospital_id: parseInt(selectedHospitalId) }, { headers });
       toast.success('Symptoms submitted for clinician review.');
       setSymptoms('');
       setSelectedHospitalId('');
@@ -350,7 +350,7 @@ export default function Layout() {
     e.preventDefault();
     if (!chatInput.trim() || !activeDoctorId) return;
     try {
-      const res = await axios.post('/api/messages', {
+      const res = await api.post('/api/messages', {
         receiver_id: activeDoctorId,
         content: chatInput
       }, { headers });
@@ -364,7 +364,7 @@ export default function Layout() {
 
   const handleDownload = async (docId: number, filename: string) => {
     try {
-      const res = await axios.get(`/api/documents/${docId}/download`, { 
+      const res = await api.get(`/api/documents/${docId}/download`, {
         headers, 
         responseType: 'blob' 
       });
@@ -385,7 +385,7 @@ export default function Layout() {
   const handleApproveAccess = async (req: any) => {
     const duration = durations[req.id] || 1;
     try {
-      await axios.post(`/api/access-requests/${req.id}/approve`, {
+      await api.post(`/api/access-requests/${req.id}/approve`, {
         duration_hours: duration,
         document_ids: req.requested_documents.map((d: any) => d.id)
       }, { headers });
@@ -398,7 +398,7 @@ export default function Layout() {
 
   const handleRejectAccess = async (reqId: number) => {
     try {
-      await axios.post(`/api/access-requests/${reqId}/reject`, {
+      await api.post(`/api/access-requests/${reqId}/reject`, {
         rejection_reason: 'Rejected by patient'
       }, { headers });
       toast.success('Access request rejected');
@@ -410,7 +410,7 @@ export default function Layout() {
 
   const handleRevokeGrant = async (grantId: number) => {
     try {
-      await axios.post(`/api/access-grants/${grantId}/revoke`, {}, { headers });
+      await api.post(`/api/access-grants/${grantId}/revoke`, {}, { headers });
       toast.success('Access revoked successfully');
       fetchAccessData();
     } catch (error: any) {
@@ -420,7 +420,7 @@ export default function Layout() {
 
   const handleMarkRead = async (id: number) => {
     try {
-      await axios.post(`/api/notifications/${id}/read`, {}, { headers });
+      await api.post(`/api/notifications/${id}/read`, {}, { headers });
       fetchPhase4Data();
     } catch (error) {
       console.error(error);
@@ -429,7 +429,7 @@ export default function Layout() {
 
   const handleMarkAllRead = async () => {
     try {
-      await axios.post(`/api/notifications/read-all`, {}, { headers });
+      await api.post(`/api/notifications/read-all`, {}, { headers });
       fetchPhase4Data();
       toast.success('All notifications marked as read');
     } catch (error) {
@@ -439,7 +439,7 @@ export default function Layout() {
 
   const handleLogout = async () => {
     try {
-      await axios.post('/api/auth/logout');
+      await api.post('/api/auth/logout');
     } catch (error) {
       console.error('Failed to revoke server session during logout', error);
     } finally {
@@ -507,6 +507,7 @@ export default function Layout() {
               { path: '/documents', label: 'Documents', icon: FileText },
               { path: '/access-requests', label: 'Access Requests', badge: pendingRequestsCount, icon: Lock },
               { path: '/access-history', label: 'Access History', icon: History },
+              { path: '/consents', label: 'Consent Policies', icon: ShieldCheck },
             ].map(item => {
               const isActive = location.pathname === item.path;
               const Icon = item.icon;
@@ -640,7 +641,7 @@ export default function Layout() {
               { path: '/dashboard', label: 'Overview', icon: Activity },
               { path: '/appointments', label: 'Visits', icon: Calendar },
               { path: '/documents', label: 'Records', icon: FileText },
-              { path: '/access-requests', label: 'Consent', icon: Lock },
+              { path: '/consents', label: 'Consent', icon: ShieldCheck },
               { path: '/profile', label: 'Profile', icon: User },
             ].map((item) => {
               const Icon = item.icon; const active = location.pathname === item.path;

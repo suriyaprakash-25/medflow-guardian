@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ENV = os.getenv("ENV", "development")
+TESTING = os.getenv("TESTING", "").strip().lower() == "true"
 SERVICE_ROLE = os.getenv("MEDFLOW_SERVICE_ROLE", "web").strip().lower()
 if SERVICE_ROLE not in {"web", "malware_worker", "retention_worker"}:
     raise ValueError(
@@ -91,7 +92,7 @@ class Settings:
         ENCRYPTION_KEY = Fernet.generate_key().decode()
 
     DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL or DATABASE_URL.startswith("sqlite"):
+    if not DATABASE_URL or (DATABASE_URL.startswith("sqlite") and not TESTING):
         print("CRITICAL CONFIGURATION ERROR: A valid PostgreSQL DATABASE_URL is required.")
         print("SQLite is strictly prohibited in the production architecture.")
         sys.exit(1)

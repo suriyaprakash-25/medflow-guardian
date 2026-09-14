@@ -74,6 +74,10 @@ class ConsentPolicyVersion(Base):
             "status IN ('active', 'superseded')",
             name="ck_consent_policy_versions_status",
         ),
+        CheckConstraint(
+            "valid_until IS NULL OR valid_from IS NULL OR valid_until > valid_from",
+            name="ck_consent_policy_versions_valid_period",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -86,6 +90,11 @@ class ConsentPolicyVersion(Base):
     policy_payload = Column(JSON, nullable=False)
     
     status = Column(String, default="active", nullable=False) # active, superseded
+
+    # RIGHT TIME policy boundary. The interval is start-inclusive/end-exclusive;
+    # null bounds represent an open-ended side of the interval.
+    valid_from = Column(DateTime(timezone=True), nullable=True)
+    valid_until = Column(DateTime(timezone=True), nullable=True)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

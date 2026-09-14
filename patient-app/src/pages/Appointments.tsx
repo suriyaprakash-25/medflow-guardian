@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { Calendar, Clock, MapPin, User as UserIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -10,7 +10,7 @@ export default function Appointments() {
   const fetchAppointments = async () => {
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.get('/api/appointments/patient', {
+      const res = await api.get('/api/appointments/patient', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAppointments(res.data);

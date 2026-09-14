@@ -8,6 +8,7 @@ from app.models.hospital import Hospital
 from app.models.clinical import Prescription, LabResult, ClinicalNote
 from app.models.document import MedicalDocument
 from app.models.consent import Consent, ConsentState, ConsentPolicyVersion
+from app.core.time import as_utc
 from app.services.interoperability.fhir_consent import (
     FHIR_ACTION_SYSTEM,
     FHIR_CATEGORY_CODE,
@@ -120,6 +121,13 @@ def to_fhir_consent(
         actors.append(_actor("custodian", "Organization", consent.hospital_id))
     if actors:
         provision["actor"] = actors
+    if policy.valid_from is not None or policy.valid_until is not None:
+        period: Dict[str, str] = {}
+        if policy.valid_from is not None:
+            period["start"] = as_utc(policy.valid_from).isoformat()
+        if policy.valid_until is not None:
+            period["end"] = as_utc(policy.valid_until).isoformat()
+        provision["period"] = period
 
     return {
         "resourceType": "Consent",

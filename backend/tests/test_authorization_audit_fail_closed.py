@@ -118,3 +118,8 @@ def test_authorization_audit_metadata_is_valid_json(db_session: Session):
 
     assert row is not None
     assert json.loads(row.metadata_json) == {"detail": detail}
+    assert row.request_id
+    assert row.correlation_id
+    assert row.authorization_id
+    assert row.enforcement_point == "fastapi-model-a-collocated-pep"
+    assert row.enforcement_state == "authoritative-live"

@@ -1,4 +1,4 @@
-import React, { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ActivitySquare, Database, ShieldCheck, Users } from 'lucide-react';
 import { Button } from '@shared/ui/Button';

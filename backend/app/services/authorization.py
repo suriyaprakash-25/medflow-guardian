@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 import json
 import logging
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Optional
@@ -19,6 +20,7 @@ from app.models.hospital import Appointment, Hospital, HospitalStaff, Visit
 from app.models.notification import Notification
 from app.models.user import User
 from app.core.observability import observe_authorization
+from app.core.request_context import get_correlation_id, get_request_id
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +88,8 @@ class DenialReason(str, enum.Enum):
     CONSENT_REQUIRED = "consent_required"
     ENFORCEMENT_STATE_INVALID = "enforcement_state_invalid"
     ENFORCEMENT_STATE_STALE = "enforcement_state_stale"
+    CONSENT_NOT_YET_VALID = "consent_not_yet_valid"
+    CONSENT_EXPIRED = "consent_expired"
 
 
 @dataclass
@@ -103,6 +107,11 @@ class AuthorizationContext:
     consent_state_id: Optional[int] = None
     policy_version: Optional[int] = None
     requires_consent: Optional[bool] = None
+    request_id: Optional[str] = None
+    correlation_id: Optional[str] = None
+    authorization_id: Optional[str] = None
+    enforcement_point: Optional[str] = None
+    enforcement_state: Optional[str] = None
 
 
 @dataclass
@@ -247,6 +256,10 @@ class AuthorizationService:
             metadata["list_access"] = True
         metadata.update(attempted_ids)
 
+        audit_request_id = ctx.request_id or get_request_id() or str(uuid.uuid4())
+        audit_correlation_id = (
+            ctx.correlation_id or get_correlation_id() or audit_request_id
+        )
         log = AuditLog(
             actor_id=actor_id,
             actor_role=actor_role,
@@ -256,9 +269,23 @@ class AuthorizationService:
             resource_type=resource_type_value,
             resource_id=resource_id,
             purpose=ctx.purpose,
+            request_id=audit_request_id,
+            correlation_id=audit_correlation_id,
+            authorization_id=ctx.authorization_id or str(uuid.uuid4()),
             consent_id=audit_consent_id,
             consent_state_id=audit_consent_state_id,
             policy_version=ctx.policy_version,
+            enforcement_point=(
+                ctx.enforcement_point or "fastapi-model-a-collocated-pep"
+            ),
+            enforcement_state=(
+                ctx.enforcement_state
+                or (
+                    f"consent-state:{ctx.consent_state_id}"
+                    if ctx.consent_state_id is not None
+                    else "authoritative-live"
+                )
+            ),
             decision="ALLOW" if decision.allowed else "DENY",
             denial_reason=decision.reason.value if decision.reason else None,
             metadata_json=json.dumps(metadata) if metadata else None,
@@ -640,7 +667,12 @@ class AuthorizationService:
         return AuthorizationDecision.deny(DenialReason.ROLE_NOT_PERMITTED)
 
     def _authorize_consent(self, ctx: AuthorizationContext) -> AuthorizationDecision:
-        if ctx.operation not in (Operation.CREATE, Operation.UPDATE):
+        if ctx.operation not in (
+            Operation.CREATE,
+            Operation.UPDATE,
+            Operation.READ,
+            Operation.LIST,
+        ):
             return AuthorizationDecision.default_deny()
         if ctx.actor.role != "patient":
             return AuthorizationDecision.deny(

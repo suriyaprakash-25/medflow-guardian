@@ -1,4 +1,5 @@
 from copy import deepcopy
+from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine
@@ -105,14 +106,15 @@ def test_maps_every_supported_fhir_r4_status(fhir_status, expected):
     assert map_fhir_consent(resource, SOURCE_SYSTEM).status == expected
 
 
-def test_rejects_time_period_until_right_time_is_enforced_dynamically():
+def test_maps_time_period_to_dynamic_right_time_bounds():
     resource = fhir_consent()
     resource["provision"]["period"] = {
         "start": "2026-09-01T00:00:00Z",
         "end": "2026-09-30T23:59:59Z",
     }
-    with pytest.raises(FHIRConsentError, match="cannot enforce losslessly: period"):
-        map_fhir_consent(resource, SOURCE_SYSTEM)
+    mapped = map_fhir_consent(resource, SOURCE_SYSTEM)
+    assert mapped.valid_from == datetime(2026, 9, 1, tzinfo=timezone.utc)
+    assert mapped.valid_until == datetime(2026, 9, 30, 23, 59, 59, tzinfo=timezone.utc)
 
 
 @pytest.mark.parametrize(
