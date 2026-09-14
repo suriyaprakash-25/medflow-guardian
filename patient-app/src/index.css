@@ -1,2 +1,10 @@
 @import "tailwindcss";
 @import "../../frontend-shared/global.css";
+
+/* Release accessibility hardening: muted/brand text must remain readable on both
+   light application surfaces and dark navigation rails. */
+.text-slate-500 { color: #475569 !important; }
+.bg-slate-900 .text-slate-500,
+.bg-slate-950 .text-slate-500 { color: #cbd5e1 !important; }
+.bg-slate-900 .text-primary,
+.bg-slate-950 .text-primary { color: #bfdbfe !important; }
