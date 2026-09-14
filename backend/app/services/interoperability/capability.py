@@ -14,7 +14,11 @@ def build_capability_statement(base_url: str) -> dict:
         "Consent": "A fail-closed R4 subset is accepted only at the documented custom import endpoint.",
         "MedicationRequest": "Export-only prescription representation inside a Bundle.",
         "Observation": "Export-only laboratory result representation inside a Bundle.",
-        "DocumentReference": "Export-only clinical note or quarantined-document metadata; binary retrieval remains outside FHIR and separately authorized.",
+        "DocumentReference": (
+            "Exported clinical-note or protected-document metadata. Private object-store "
+            "locations are never disclosed; authorized document bytes are available only "
+            "through the separately authorized FHIR Binary read endpoint."
+        ),
     }
     for resource_type, documentation in descriptions.items():
         resources.append(
@@ -25,6 +29,19 @@ def build_capability_statement(base_url: str) -> dict:
             }
         )
 
+    resources.append(
+        {
+            "type": "Binary",
+            "profile": "http://hl7.org/fhir/StructureDefinition/Binary",
+            "documentation": (
+                "Read-only protected document bytes. Release requires MedFlow authentication, "
+                "central Model-A authorization, purpose/consent where applicable, and a clean "
+                "malware-scan state. Storage keys and direct object URLs are never returned."
+            ),
+            "interaction": [{"code": "read"}],
+        }
+    )
+
     return {
         "resourceType": "CapabilityStatement",
         "id": "medflow-guardian-r4",
@@ -32,22 +49,23 @@ def build_capability_statement(base_url: str) -> dict:
             "status": "generated",
             "div": (
                 '<div xmlns="http://www.w3.org/1999/xhtml">'
-                "<p>MedFlow Guardian supports a constrained FHIR R4 export and "
-                "Consent-import interface. It is not a general FHIR CRUD server.</p>"
+                "<p>MedFlow Guardian supports a constrained FHIR R4 export, "
+                "Consent-import, and protected Binary-read interface. It is not a "
+                "general FHIR CRUD server.</p>"
                 "</div>"
             ),
         },
         "url": f"{api_base}/api/interoperability/metadata",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "name": "MedFlowGuardianR4CapabilityStatement",
         "title": "MedFlow Guardian FHIR R4 Capability Statement",
         "status": "active",
         "experimental": False,
-        "date": "2026-09-13",
+        "date": "2026-09-14",
         "publisher": "MedFlow Guardian",
         "description": (
-            "FHIR R4 export and Consent-import capabilities implemented by MedFlow. "
-            "This is not a general-purpose FHIR CRUD server."
+            "FHIR R4 export, Consent-import, and protected Binary-read capabilities "
+            "implemented by MedFlow. This is not a general-purpose FHIR CRUD server."
         ),
         "kind": "instance",
         "software": {"name": "MedFlow Guardian API", "version": "0.1.0"},
@@ -61,16 +79,17 @@ def build_capability_statement(base_url: str) -> dict:
             {
                 "mode": "server",
                 "documentation": (
-                    "Capability metadata is public. Patient export requires MedFlow bearer "
-                    "authentication and central authorization. Consent import uses the custom "
-                    "/fhir/consents/import endpoint. No standard FHIR search, history, update, "
-                    "delete, transaction, batch, or Binary endpoint is claimed."
+                    "Capability metadata is public. Patient export and Binary read require "
+                    "MedFlow bearer authentication and central authorization. Consent import "
+                    "uses the custom /fhir/consents/import endpoint. No standard FHIR search, "
+                    "history, update, delete, transaction, or batch endpoint is claimed."
                 ),
                 "security": {
                     "cors": True,
                     "description": (
                         "MedFlow bearer JWT plus role, organization, relationship, consent, "
-                        "purpose, operation, and time checks. CORS uses explicit trusted origins."
+                        "purpose, operation, time, and malware-release checks. CORS uses "
+                        "explicit trusted origins."
                     ),
                 },
                 "resource": resources,

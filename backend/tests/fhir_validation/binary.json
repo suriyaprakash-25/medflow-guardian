@@ -1,0 +1,9 @@
+{
+  "resourceType": "Binary",
+  "id": "1",
+  "contentType": "text/plain",
+  "securityContext": {
+    "reference": "DocumentReference/1"
+  },
+  "data": "TWVkRmxvdyBHVWFyZGlhbg=="
+}
