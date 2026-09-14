@@ -110,6 +110,7 @@ def test_production_web_disables_interactive_api_documentation():
             "SECRET_KEY": "production-test-secret",
             "ENCRYPTION_KEY": Fernet.generate_key().decode(),
             "PATIENT_APP_ORIGIN": "https://patient.example.com",
+            "FRONTEND_CORS_ORIGINS": "https://patient.example.com",
         }
     )
 
@@ -139,6 +140,7 @@ def test_production_web_disables_interactive_api_documentation():
 
 def test_production_worker_does_not_require_web_only_secrets_or_cors():
     env = _production_subprocess_env(role="malware_worker")
+    env["FRONTEND_CORS_ORIGINS"] = ""
 
     completed = subprocess.run(
         [
