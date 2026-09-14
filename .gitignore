@@ -34,6 +34,11 @@ Thumbs.db
 .vscode/
 .idea/
 
+# Testing
+backend/.coverage
+ui-tests/test-results/
+ui-tests/playwright-report/
+
 # Custom
 .agents/
 skills-lock.json
