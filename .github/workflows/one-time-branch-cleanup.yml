@@ -1,0 +1,40 @@
+name: One-time branch cleanup
+
+on:
+  push:
+    branches:
+      - dev
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout dev
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+
+      - name: Delete every branch except main and dev
+        run: |
+          set -euo pipefail
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          git for-each-ref refs/remotes/origin --format='%(refname:strip=3)' | while read -r branch; do
+            case "$branch" in
+              main|dev|HEAD|'') continue ;;
+            esac
+            echo "Deleting remote branch: $branch"
+            git push origin --delete "$branch"
+          done
+
+      - name: Remove one-time workflow
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/one-time-branch-cleanup.yml
+          git commit -m "chore: remove one-time branch cleanup workflow"
+          git push origin HEAD:dev
