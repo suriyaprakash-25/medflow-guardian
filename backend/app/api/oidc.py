@@ -29,7 +29,6 @@ from app.services.oidc import (
 
 router = APIRouter()
 _STATE_COOKIE = "medflow_oidc_state"
-_STATE_TTL_SECONDS = 300
 
 
 class OIDCExchangeRequest(BaseModel):
@@ -42,7 +41,7 @@ def _state_cookie_options() -> dict:
         "httponly": True,
         "secure": settings.ENV == "production",
         "samesite": "lax",
-        "max_age": _STATE_TTL_SECONDS,
+        "max_age": settings.OIDC_STATE_TTL_SECONDS,
         "path": "/api/auth/oidc",
     }
 
@@ -56,7 +55,7 @@ def _encode_state(provider: str, state: str, nonce: str) -> str:
             "state": state,
             "nonce": nonce,
             "iat": now,
-            "exp": now + timedelta(seconds=_STATE_TTL_SECONDS),
+            "exp": now + timedelta(seconds=settings.OIDC_STATE_TTL_SECONDS),
         },
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
