@@ -2,6 +2,16 @@ from sqlalchemy import CheckConstraint, Column, Integer, String, DateTime, Forei
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.core.database import Base
+from app.core.request_context import get_correlation_id, get_request_id
+import uuid
+
+
+def _trace_id() -> str:
+    return get_request_id() or str(uuid.uuid4())
+
+
+def _correlation_id() -> str:
+    return get_correlation_id() or get_request_id() or str(uuid.uuid4())
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -24,18 +34,20 @@ class AuditLog(Base):
     
     # Security Context
     purpose = Column(String, nullable=True)
-    request_id = Column(String, nullable=True, index=True)
-    correlation_id = Column(String, nullable=True, index=True)
+    request_id = Column(String, nullable=True, index=True, default=_trace_id)
+    correlation_id = Column(String, nullable=True, index=True, default=_correlation_id)
     
     # Authorization & Consent Trace
-    authorization_id = Column(String, nullable=True)
+    authorization_id = Column(String, nullable=True, default=lambda: str(uuid.uuid4()))
     consent_id = Column(Integer, ForeignKey("consents.id"), nullable=True, index=True)
     consent_state_id = Column(Integer, ForeignKey("consent_states.id"), nullable=True, index=True)
     policy_version = Column(Integer, nullable=True)
     
     # Enforcement
-    enforcement_point = Column(String, nullable=True)
-    enforcement_state = Column(String, nullable=True)
+    enforcement_point = Column(
+        String, nullable=True, default="fastapi-model-a-collocated-pep"
+    )
+    enforcement_state = Column(String, nullable=True, default="authoritative-live")
     decision = Column(String, nullable=False) # 'ALLOW' or 'DENY'
     denial_reason = Column(String, nullable=True)
     

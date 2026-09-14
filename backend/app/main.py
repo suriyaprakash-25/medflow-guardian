@@ -43,6 +43,7 @@ from app.core.observability import (
     render_prometheus,
     set_readiness,
 )
+from app.core.request_context import bind_request_context, reset_request_context
 
 
 _REQUEST_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]{8,128}$")
@@ -84,7 +85,14 @@ app.add_middleware(
     allow_origins=settings.FRONTEND_CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Accept", "Authorization", "Content-Type"],
+    allow_headers=[
+        "Accept",
+        "Authorization",
+        "Content-Type",
+        "X-Request-ID",
+        "X-Correlation-ID",
+    ],
+    expose_headers=["X-Request-ID", "X-Correlation-ID"],
 )
 
 app.add_middleware(SlowAPIMiddleware)
@@ -98,6 +106,13 @@ async def observe_request(request: Request, call_next):
         if _REQUEST_ID_PATTERN.fullmatch(supplied_request_id)
         else str(uuid.uuid4())
     )
+    supplied_correlation_id = request.headers.get("X-Correlation-ID", "")
+    correlation_id = (
+        supplied_correlation_id
+        if _REQUEST_ID_PATTERN.fullmatch(supplied_correlation_id)
+        else request_id
+    )
+    context_tokens = bind_request_context(request_id, correlation_id)
     started = monotonic_time()
     status_code = 500
     try:
@@ -117,6 +132,7 @@ async def observe_request(request: Request, call_next):
             extra={
                 "event": "http_request",
                 "request_id": request_id,
+                "correlation_id": correlation_id,
                 "method": request.method,
                 "route": route,
                 "status_code": status_code,
@@ -124,6 +140,8 @@ async def observe_request(request: Request, call_next):
             },
         )
         raise
+    finally:
+        reset_request_context(context_tokens)
 
     route = getattr(request.scope.get("route"), "path", "unmatched")
     duration = monotonic_time() - started
@@ -135,12 +153,14 @@ async def observe_request(request: Request, call_next):
             duration_seconds=duration,
         )
     response.headers["X-Request-ID"] = request_id
+    response.headers["X-Correlation-ID"] = correlation_id
     log_method = log.warning if status_code >= 500 else log.info
     log_method(
         "HTTP request completed",
         extra={
             "event": "http_request",
             "request_id": request_id,
+            "correlation_id": correlation_id,
             "method": request.method,
             "route": route,
             "status_code": status_code,

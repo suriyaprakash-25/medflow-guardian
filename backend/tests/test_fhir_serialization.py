@@ -1,6 +1,7 @@
 import base64
 
 import pytest
+from datetime import datetime, timezone
 
 from app.models.clinical import ClinicalNote, LabResult, Medication, Prescription
 from app.models.consent import Consent, ConsentPolicyVersion, ConsentState, ConsentStatus
@@ -141,6 +142,8 @@ def test_medflow_consent_round_trips_through_one_canonical_profile():
             "allowed_operations": ["read", "download"],
         },
         status="active",
+        valid_from=datetime(2026, 9, 1, tzinfo=timezone.utc),
+        valid_until=datetime(2026, 10, 1, tzinfo=timezone.utc),
     )
     state = ConsentState(
         id=31,
@@ -155,6 +158,10 @@ def test_medflow_consent_round_trips_through_one_canonical_profile():
     assert resource["category"][0]["coding"][0]["code"] == "59284-0"
     assert resource["provision"]["action"][0]["coding"][0]["code"] == "disclose"
     assert resource["provision"]["purpose"][0]["code"] == "TREAT"
+    assert resource["provision"]["period"] == {
+        "start": "2026-09-01T00:00:00+00:00",
+        "end": "2026-10-01T00:00:00+00:00",
+    }
     assert {a["reference"]["reference"] for a in resource["provision"]["actor"]} == {
         "Practitioner/202",
         "Organization/303",
@@ -167,6 +174,8 @@ def test_medflow_consent_round_trips_through_one_canonical_profile():
     assert mapped.status == ConsentStatus.ACTIVE.value
     assert mapped.policy_payload["allowed_purposes"] == ["TREATMENT"]
     assert mapped.policy_payload["allowed_operations"] == ["download", "read"]
+    assert mapped.valid_from == policy.valid_from
+    assert mapped.valid_until == policy.valid_until
 
 
 def test_consent_export_fails_if_fhir_action_would_broaden_authority():

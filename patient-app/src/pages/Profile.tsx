@@ -8,7 +8,7 @@ import { Input } from '@shared/ui/Input';
 import { Label } from '@shared/ui/Label';
 import { Button } from '@shared/ui/Button';
 import { toast } from 'react-hot-toast';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 
 export default function Profile() {
   const { patientVisits, requests, auditLogs, patientProfile, setPatientProfile } = usePatientContext();
@@ -53,7 +53,7 @@ export default function Profile() {
     setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      const res = await axios.post('/api/users/patient-profile', formData, {
+      const res = await api.post('/api/users/patient-profile', formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPatientProfile(res.data);

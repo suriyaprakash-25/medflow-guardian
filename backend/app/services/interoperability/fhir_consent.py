@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.consent import Consent, ConsentPolicyVersion, ConsentState, ConsentStatus
+from app.core.time import as_utc
 from app.models.hospital import Hospital, HospitalStaff
 from app.models.user import User
 
@@ -87,7 +88,6 @@ FHIR_ID_PATTERN = re.compile(r"^[A-Za-z0-9\-.]{1,64}$")
 # These provision fields materially narrow or alter authorization semantics, but
 # the current MedFlow policy model/ConsentService cannot enforce them losslessly.
 UNSUPPORTED_PROVISION_FIELDS = {
-    "period",
     "securityLabel",
     "class",
     "code",
@@ -114,6 +114,8 @@ class MappedFHIRConsent:
     hospital_id: int | None
     status: str
     policy_payload: dict[str, Any]
+    valid_from: datetime | None
+    valid_until: datetime | None
 
 
 @dataclass(frozen=True)
@@ -370,6 +372,32 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
             + ", ".join(unsupported)
         )
 
+    valid_from = None
+    valid_until = None
+    raw_period = provision.get("period")
+    if raw_period not in (None, {}):
+        period = _require_dict(raw_period, "Consent.provision.period")
+        unexpected_period_fields = sorted(set(period) - {"start", "end"})
+        if unexpected_period_fields:
+            raise FHIRConsentError(
+                "Consent.provision.period contains unsupported fields: "
+                + ", ".join(unexpected_period_fields)
+            )
+        if period.get("start") is None and period.get("end") is None:
+            raise FHIRConsentError("Consent.provision.period requires start or end")
+        if period.get("start") is not None:
+            valid_from = _parse_fhir_instant(
+                period["start"], "Consent.provision.period.start"
+            )
+        if period.get("end") is not None:
+            valid_until = _parse_fhir_instant(
+                period["end"], "Consent.provision.period.end"
+            )
+        if valid_from is not None and valid_until is not None and valid_until <= valid_from:
+            raise FHIRConsentError(
+                "Consent.provision.period.end must be later than start"
+            )
+
     action_codes = _codes(
         provision.get("action"),
         "Consent.provision.action",
@@ -453,6 +481,8 @@ def map_fhir_consent(resource: dict[str, Any], source_system: str) -> MappedFHIR
         hospital_id=next(iter(hospital_ids), None),
         status=mapped_status,
         policy_payload=policy_payload,
+        valid_from=valid_from,
+        valid_until=valid_until,
     )
 
 
@@ -566,6 +596,8 @@ class FHIRConsentImporter:
                 )
                 content_changed = (
                     previous_policy.policy_payload != mapped.policy_payload
+                    or as_utc(previous_policy.valid_from) != as_utc(mapped.valid_from)
+                    or as_utc(previous_policy.valid_until) != as_utc(mapped.valid_until)
                     or previous_state.status != mapped.status
                     or scope_changed
                 )
@@ -621,6 +653,8 @@ class FHIRConsentImporter:
             version_number=next_version,
             policy_payload=mapped.policy_payload,
             status="active",
+            valid_from=mapped.valid_from,
+            valid_until=mapped.valid_until,
         )
         self._db.add(policy)
         self._db.flush()

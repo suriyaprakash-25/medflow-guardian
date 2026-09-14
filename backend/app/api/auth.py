@@ -9,6 +9,7 @@ import uuid
 from app.core.database import get_db
 from app.core.config import settings
 from app.core.limiter import limiter
+from app.core.time import as_utc
 from app.core.security import (
     verify_password, create_access_token, get_password_hash,
     create_refresh_token, hash_refresh_token,
@@ -269,7 +270,7 @@ def refresh_token(request: Request, response: Response, db: DBSession = Depends(
         clear_refresh_cookie(response)
         raise HTTPException(status_code=401, detail="Session revoked")
 
-    if session_record.expires_at < datetime.now(timezone.utc):
+    if as_utc(session_record.expires_at) < datetime.now(timezone.utc):
         db.delete(session_record)
         db.commit()
         clear_refresh_cookie(response)

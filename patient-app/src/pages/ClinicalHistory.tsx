@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { Activity, Beaker, FileText, Download } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
@@ -16,12 +16,12 @@ export default function ClinicalHistory() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userRes = await axios.get('/api/auth/me', { headers });
+        const userRes = await api.get('/api/auth/me', { headers });
         const patientId = userRes.data.id;
         const [prescRes, labsRes, notesRes] = await Promise.all([
-          axios.get(`/api/clinical/prescriptions/patient/${patientId}`, { headers }),
-          axios.get(`/api/clinical/labs/patient/${patientId}`, { headers }),
-          axios.get(`/api/clinical/notes/patient/${patientId}`, { headers })
+          api.get(`/api/clinical/prescriptions/patient/${patientId}`, { headers }),
+          api.get(`/api/clinical/labs/patient/${patientId}`, { headers }),
+          api.get(`/api/clinical/notes/patient/${patientId}`, { headers })
         ]);
         setPrescriptions(prescRes.data);
         setLabs(labsRes.data);
@@ -39,10 +39,10 @@ export default function ClinicalHistory() {
   const handleExportFHIR = async () => {
     setExporting(true);
     try {
-      const userRes = await axios.get('/api/auth/me', { headers });
+      const userRes = await api.get('/api/auth/me', { headers });
       const patientId = userRes.data.id;
       const params = new URLSearchParams({ purpose: 'SELF_ACCESS' });
-      const res = await axios.get(`/api/interoperability/patients/${patientId}/export?${params.toString()}`, { headers });
+      const res = await api.get(`/api/interoperability/patients/${patientId}/export?${params.toString()}`, { headers });
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

@@ -5,7 +5,7 @@ import { Button } from '@shared/ui/Button';
 import { Badge } from '@shared/ui/Badge';
 import { EmptyState } from '@shared/ui/EmptyState';
 import { HeartPulse, MessageSquare, Send, Activity, User, MapPin, Clock, Stethoscope, FileText, Beaker, Download } from 'lucide-react';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { toast } from 'react-hot-toast';
 
 interface PrescriptionRecord {
@@ -57,9 +57,9 @@ export default function PatientDetails() {
         };
         try {
           const [prescRes, labsRes, notesRes] = await Promise.all([
-            axios.get(`/api/clinical/prescriptions/patient/${activePatientId}`, { headers, params }),
-            axios.get(`/api/clinical/labs/patient/${activePatientId}`, { headers, params }),
-            axios.get(`/api/clinical/notes/patient/${activePatientId}`, { headers, params })
+            api.get(`/api/clinical/prescriptions/patient/${activePatientId}`, { headers, params }),
+            api.get(`/api/clinical/labs/patient/${activePatientId}`, { headers, params }),
+            api.get(`/api/clinical/notes/patient/${activePatientId}`, { headers, params })
           ]);
           setPrescriptions(prescRes.data);
           setLabs(labsRes.data);
@@ -93,7 +93,7 @@ export default function PatientDetails() {
         purpose: 'TREATMENT',
         consent_id: String(consentId),
       });
-      const res = await axios.get(`/api/interoperability/patients/${activePatientId}/export?${params.toString()}`, { headers });
+      const res = await api.get(`/api/interoperability/patients/${activePatientId}/export?${params.toString()}`, { headers });
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');

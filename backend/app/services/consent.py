@@ -1,8 +1,10 @@
+from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from app.models.consent import Consent, ConsentState, ConsentStatus
+from app.core.time import as_utc
 from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
 
 
@@ -119,7 +121,26 @@ class ConsentService:
                 "Policy version not found",
             )
 
-        # 7. RIGHT PURPOSE is mandatory for governed cross-role patient access.
+        # 7. RIGHT TIME is evaluated from the authoritative immutable policy on
+        # every request. PostgreSQL returns timezone-aware values in production;
+        # SQLite test fixtures may return naive values, which are interpreted as
+        # UTC to preserve one deterministic comparison rule.
+        now = datetime.now(timezone.utc)
+
+        valid_from = as_utc(getattr(policy, "valid_from", None))
+        valid_until = as_utc(getattr(policy, "valid_until", None))
+        if valid_from is not None and now < valid_from:
+            return AuthorizationDecision.deny(
+                DenialReason.CONSENT_NOT_YET_VALID,
+                f"Consent policy is not valid until {valid_from.isoformat()}",
+            )
+        if valid_until is not None and now >= valid_until:
+            return AuthorizationDecision.deny(
+                DenialReason.CONSENT_EXPIRED,
+                f"Consent policy expired at {valid_until.isoformat()}",
+            )
+
+        # 8. RIGHT PURPOSE is mandatory for governed cross-role patient access.
         # Missing, empty, or whitespace-only purpose must never skip the policy
         # check. Purpose tokens are intentionally matched exactly; this service
         # does not silently rewrite/normalize semantic values.
@@ -136,7 +157,7 @@ class ConsentService:
                 f"PURPOSE_NOT_ALLOWED: '{purpose}' is not permitted by the active consent policy",
             )
 
-        # 8. Operation must also be granted by the active policy. Preserve the
+        # 9. Operation must also be granted by the active policy. Preserve the
         # existing empty-list semantics for now; policy-shape hardening is a
         # separate concern and should not be silently changed in this phase.
         allowed_operations = policy.policy_payload.get("allowed_operations", [])

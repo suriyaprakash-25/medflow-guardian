@@ -19,6 +19,16 @@ def test_request_correlation_and_protected_prometheus_metrics(monkeypatch):
     health = client.get("/health", headers={"X-Request-ID": "request-12345"})
     assert health.status_code == 200
     assert health.headers["x-request-id"] == "request-12345"
+    assert health.headers["x-correlation-id"] == "request-12345"
+
+    correlated = client.get(
+        "/health",
+        headers={
+            "X-Request-ID": "request-12345",
+            "X-Correlation-ID": "workflow-67890",
+        },
+    )
+    assert correlated.headers["x-correlation-id"] == "workflow-67890"
 
     assert client.get("/internal/metrics").status_code == 404
     assert (

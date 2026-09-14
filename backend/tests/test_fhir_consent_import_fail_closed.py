@@ -101,7 +101,7 @@ def test_deprecated_alias_uses_same_canonical_fail_closed_mapper(db_session):
     assert db_session.query(Consent).filter(Consent.patient_id == patient.id).count() == 0
 
 
-def test_time_period_is_rejected_until_right_time_mapping_exists(db_session):
+def test_time_period_is_persisted_for_dynamic_right_time_enforcement(db_session):
     patient = _patient(db_session, "fhir-period@example.com")
     payload = _payload(patient.id)
     payload["provision"]["period"] = {
@@ -111,10 +111,11 @@ def test_time_period_is_rejected_until_right_time_mapping_exists(db_session):
 
     response = _post("/api/interoperability/fhir/consents/import", payload)
 
-    assert response.status_code == 422
-    assert "cannot enforce losslessly" in response.json()["detail"]
-    assert "period" in response.json()["detail"]
-    assert db_session.query(Consent).filter(Consent.patient_id == patient.id).count() == 0
+    assert response.status_code == 200
+    consent = db_session.query(Consent).filter(Consent.patient_id == patient.id).one()
+    policy = consent.policy_versions[0]
+    assert policy.valid_from.isoformat().startswith("2026-09-01T00:00:00")
+    assert policy.valid_until.isoformat().startswith("2026-09-30T23:59:59")
 
 
 def test_nested_provision_is_rejected_instead_of_silently_ignored(db_session):

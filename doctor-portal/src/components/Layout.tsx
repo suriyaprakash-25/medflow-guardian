@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import originalAxios from 'axios';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/websocket';
 import { useNavigate, Outlet, Link, useLocation } from 'react-router-dom';
 import { Activity, Users, User, FileText, Lock, Bell, LogOut, Shield, Calendar } from 'lucide-react';
@@ -210,7 +210,7 @@ export default function Layout() {
 
   const handleLogout = useCallback(async () => {
     try {
-      await axios.post('/api/auth/logout');
+      await api.post('/api/auth/logout');
     } catch (error) {
       console.error('Failed to revoke server session during logout', error);
     } finally {
@@ -221,7 +221,7 @@ export default function Layout() {
 
   const fetchQueue = useCallback(async () => {
     try {
-      const res = await axios.get('/api/triage/', { headers });
+      const res = await api.get('/api/triage/', { headers });
       setRequests(res.data);
     } catch (error) {
       if (originalAxios.isAxiosError(error) && error.response?.status === 401) {
@@ -235,7 +235,7 @@ export default function Layout() {
     const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
     if (!activeVisit) return;
     try {
-      const res = await axios.get(`/api/messages/${activePatientId}`, {
+      const res = await api.get(`/api/messages/${activePatientId}`, {
         headers,
         params: { hospital_id: activeVisit.hospital_id, purpose: 'TREATMENT' },
       });
@@ -250,7 +250,7 @@ export default function Layout() {
     const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
     if (!activeVisit) return;
     try {
-      const res = await axios.get(`/api/readings/${activePatientId}`, {
+      const res = await api.get(`/api/readings/${activePatientId}`, {
         headers,
         params: { hospital_id: activeVisit.hospital_id, purpose: 'TREATMENT' },
       });
@@ -268,7 +268,7 @@ export default function Layout() {
   const [uploading, setUploading] = useState(false);
   const fetchDoctorVisits = useCallback(async () => {
     try {
-      const res = await axios.get('/api/visits/doctor', { headers });
+      const res = await api.get('/api/visits/doctor', { headers });
       const visits = res.data as DoctorVisit[];
       setDoctorVisits(visits);
       if (visits.length > 0) {
@@ -293,8 +293,8 @@ export default function Layout() {
   const fetchAccessData = useCallback(async () => {
     try {
       const [reqs, grants] = await Promise.all([
-        axios.get('/api/access-requests/doctor', { headers }),
-        axios.get('/api/access-grants/doctor', { headers }),
+        api.get('/api/access-requests/doctor', { headers }),
+        api.get('/api/access-grants/doctor', { headers }),
       ]);
       setAccessRequests(reqs.data);
       setAccessGrants(grants.data);
@@ -309,8 +309,8 @@ export default function Layout() {
   const fetchPhase4Data = useCallback(async () => {
     try {
       const [notifs, audits] = await Promise.all([
-        axios.get('/api/notifications', { headers }),
-        axios.get('/api/audit/doctor', { headers }),
+        api.get('/api/notifications', { headers }),
+        api.get('/api/audit/doctor', { headers }),
       ]);
       setNotifications(notifs.data);
       setAuditLogs(audits.data);
@@ -320,7 +320,7 @@ export default function Layout() {
   }, [headers]);
 
   useEffect(() => {
-    axios.get('/api/auth/me', { headers }).then((res) => {
+    api.get('/api/auth/me', { headers }).then((res) => {
       if (
         res.data.system_role !== 'doctor'
         && res.data.role !== 'doctor'
@@ -356,7 +356,7 @@ export default function Layout() {
 
     const reconnectAfterAuthFailure = async () => {
       try {
-        const response = await axios.post('/api/auth/refresh');
+        const response = await api.post('/api/auth/refresh');
         const refreshedToken = response.data?.access_token;
         if (typeof refreshedToken !== 'string' || !refreshedToken) {
           throw new Error('Refresh response did not include an access token');
@@ -473,7 +473,7 @@ export default function Layout() {
   const fetchAdminData = useCallback(async () => {
     if (!isAdmin) return;
     try {
-      const res = await axios.get('/api/admin/dashboard', { headers });
+      const res = await api.get('/api/admin/dashboard', { headers });
       setAdminData(res.data);
     } catch (error) {
       console.error(error);
@@ -489,7 +489,7 @@ export default function Layout() {
 
   const updateStatus = async (id: number, newStatus: string) => {
     try {
-      await axios.patch(`/api/triage/${id}/status`, { status: newStatus }, { headers });
+      await api.patch(`/api/triage/${id}/status`, { status: newStatus }, { headers });
       toast.success(`Triage request marked as ${newStatus}`);
     } catch {
       toast.error('Failed to update status.');
@@ -505,7 +505,7 @@ export default function Layout() {
       return;
     }
     try {
-      await axios.post('/api/messages', {
+      await api.post('/api/messages', {
         receiver_id: activePatientId,
         content: chatInput,
       }, {
@@ -533,7 +533,7 @@ export default function Layout() {
     formData.append('file', uploadFile);
 
     try {
-      await axios.post('/api/documents', formData, {
+      await api.post('/api/documents', formData, {
         headers: { ...headers, 'Content-Type': 'multipart/form-data' },
       });
       toast.success('Document uploaded successfully!');
@@ -555,7 +555,7 @@ export default function Layout() {
     }
     setFetchingDocs(true);
     try {
-      const res = await axios.get(`/api/documents/metadata/${reqPatientId}`, {
+      const res = await api.get(`/api/documents/metadata/${reqPatientId}`, {
         headers,
         params: { hospital_id: parseInt(reqHospitalId, 10) },
       });
@@ -579,7 +579,7 @@ export default function Layout() {
       return;
     }
     try {
-      await axios.post('/api/access-requests', {
+      await api.post('/api/access-requests', {
         patient_id: parseInt(reqPatientId, 10),
         hospital_id: parseInt(reqHospitalId, 10),
         document_ids: selectedDocs,
@@ -597,7 +597,7 @@ export default function Layout() {
 
   const handleDownload = async (docId: number, filename: string) => {
     try {
-      const res = await axios.get(`/api/documents/${docId}/download`, {
+      const res = await api.get(`/api/documents/${docId}/download`, {
         headers,
         responseType: 'blob',
         params: { purpose: 'TREATMENT' },
@@ -622,7 +622,7 @@ export default function Layout() {
 
   const handleMarkRead = async (id: number) => {
     try {
-      await axios.post(`/api/notifications/${id}/read`, {}, { headers });
+      await api.post(`/api/notifications/${id}/read`, {}, { headers });
       void fetchPhase4Data();
     } catch (error) {
       console.error(error);
@@ -631,7 +631,7 @@ export default function Layout() {
 
   const handleMarkAllRead = async () => {
     try {
-      await axios.post('/api/notifications/read-all', {}, { headers });
+      await api.post('/api/notifications/read-all', {}, { headers });
       void fetchPhase4Data();
       toast.success('All notifications marked as read');
     } catch (error) {

@@ -2,9 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import or_
 from typing import List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.core.database import get_db
+from app.core.time import as_utc
 from app.models.user import User
 from app.models.hospital import HospitalStaff
 from app.models.document import MedicalDocument
@@ -181,6 +182,12 @@ def approve_request(
             MedicalDocument.patient_id == current_patient.id
         ).all()
 
+    # One authoritative validity window drives both the grant and consent
+    # policy. This prevents either representation from silently outliving the
+    # patient's selected approval duration.
+    valid_from = datetime.now(timezone.utc)
+    expires_at = valid_from + timedelta(hours=approval_data.duration_hours)
+
     # Phase 5: Create Governance Entities (Consent, Policy, State)
     consent = Consent(
         patient_id=current_patient.id,
@@ -201,7 +208,9 @@ def approve_request(
             "allowed_purposes": ["TREATMENT"],
             "allowed_operations": [Operation.READ.value, Operation.DOWNLOAD.value],
         },
-        status="active"
+        status="active",
+        valid_from=valid_from,
+        valid_until=expires_at,
     )
     db.add(policy)
     db.flush()
@@ -215,8 +224,6 @@ def approve_request(
     db.flush()
 
     # Create Grant
-    expires_at = datetime.utcnow() + timedelta(hours=approval_data.duration_hours)
-
     grant = DocumentAccessGrant(
         access_request_id=req.id,
         patient_id=current_patient.id,
@@ -458,8 +465,7 @@ def get_doctor_grants(
 
     # Automatically mark expired grants as such in memory for the response
     # (A background job or access-check handles true expiration, but for UI clarity we check it here)
-    from datetime import timezone
     for g in grants:
-        if g.status == "active" and g.expires_at < datetime.now(timezone.utc):
+        if g.status == "active" and as_utc(g.expires_at) < datetime.now(timezone.utc):
             g.status = "expired"
     return grants

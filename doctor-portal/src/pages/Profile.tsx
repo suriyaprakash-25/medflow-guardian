@@ -6,7 +6,7 @@ import { EmptyState } from '@shared/ui/EmptyState';
 import { ShieldCheck, History, Activity, AlertCircle, Clock, User, Mail, Save, Phone, Building } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 
 interface ProfileUpdatePayload {
   full_name?: string;
@@ -45,7 +45,7 @@ export default function Profile() {
       if (formData.fullName.trim()) payload.full_name = formData.fullName.trim();
       if (formData.email.trim()) payload.email = formData.email.trim();
 
-      await axios.patch('/api/auth/me', payload);
+      await api.patch('/api/auth/me', payload);
       
       setCurrentUser({
         ...currentUser,

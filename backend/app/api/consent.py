@@ -27,6 +27,27 @@ router = APIRouter()
 CONSENT_MANAGEMENT_PURPOSE = "CONSENT_MANAGEMENT"
 
 
+def _consent_response(db: Session, consent: Consent) -> dict:
+    current_state = (
+        db.query(ConsentState)
+        .filter(ConsentState.consent_id == consent.id)
+        .order_by(ConsentState.created_at.desc(), ConsentState.id.desc())
+        .first()
+    )
+    active_policy = current_state.policy_version if current_state else None
+    return {
+        "id": consent.id,
+        "patient_id": consent.patient_id,
+        "hospital_id": consent.hospital_id,
+        "doctor_id": consent.doctor_id,
+        "status": consent.status,
+        "created_at": consent.created_at,
+        "updated_at": consent.updated_at,
+        "current_state": current_state,
+        "active_policy": active_policy,
+    }
+
+
 def _enforce_consent_write(
     *,
     db: Session,
@@ -62,6 +83,45 @@ def _enforce_consent_write(
         raise HTTPException(status_code=403, detail=detail)
 
 
+@router.get("/consents", response_model=list[ConsentResponse])
+def list_consents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _enforce_consent_write(
+        db=db,
+        current_user=current_user,
+        operation=Operation.LIST,
+        patient_id=current_user.id,
+    )
+    consents = (
+        db.query(Consent)
+        .filter(Consent.patient_id == current_user.id)
+        .order_by(Consent.created_at.desc(), Consent.id.desc())
+        .all()
+    )
+    return [_consent_response(db, item) for item in consents]
+
+
+@router.get("/consents/{consent_id}", response_model=ConsentResponse)
+def get_consent(
+    consent_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    consent = db.query(Consent).filter(Consent.id == consent_id).first()
+    if not consent:
+        raise HTTPException(status_code=404, detail="Consent not found")
+    _enforce_consent_write(
+        db=db,
+        current_user=current_user,
+        operation=Operation.READ,
+        patient_id=consent.patient_id,
+        consent=consent,
+    )
+    return _consent_response(db, consent)
+
+
 @router.post("/consents", response_model=ConsentResponse)
 def create_consent(
     consent_in: ConsentCreate,
@@ -92,6 +152,8 @@ def create_consent(
             "allowed_operations": consent_in.allowed_operations,
         },
         status="active",
+        valid_from=consent_in.valid_from,
+        valid_until=consent_in.valid_until,
     )
     db.add(policy)
     db.flush()
@@ -104,7 +166,7 @@ def create_consent(
     db.add(state)
     db.commit()
     db.refresh(consent)
-    return consent
+    return _consent_response(db, consent)
 
 
 @router.post("/consents/{consent_id}/policy-versions", response_model=ConsentPolicyVersionResponse)
@@ -149,6 +211,8 @@ def create_policy_version(
             "allowed_operations": policy_in.allowed_operations,
         },
         status="active",
+        valid_from=policy_in.valid_from,
+        valid_until=policy_in.valid_until,
     )
     db.add(new_policy)
     db.flush()

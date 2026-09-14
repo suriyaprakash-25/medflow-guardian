@@ -6,7 +6,7 @@ import { Select } from '@shared/ui/Select';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { FormField } from '@shared/ui/FormField';
 import { HeartPulse, MessageSquare, Send, PlusCircle, CheckCheck } from 'lucide-react';
-import React, { Suspense } from 'react';
+import { Suspense } from 'react';
 
 import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 

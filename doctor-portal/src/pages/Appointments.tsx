@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { api as axios } from '../lib/api';
+import { api } from '../lib/api';
 import { Calendar, Clock, MapPin, User as UserIcon } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useDoctorContext } from '../lib/doctorContext';
@@ -24,7 +24,7 @@ export default function Appointments() {
       return;
     }
     try {
-      const res = await axios.get(`/api/appointments/doctor/${currentUser.id}`);
+      const res = await api.get(`/api/appointments/doctor/${currentUser.id}`);
       setAppointments(res.data);
     } catch {
       toast.error('Failed to load appointments');
