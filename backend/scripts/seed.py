@@ -8,12 +8,17 @@ backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(backend_dir)
 os.chdir(backend_dir)
 
-from app.core.database import SessionLocal, engine
+from app.core.database import SessionLocal, engine, Base
 from app.models.user import User
 from app.models.hospital import Hospital, HospitalStaff, Visit
 from app.core.security import get_password_hash
 
 def run_migrations():
+    if engine.url.drivername == "sqlite":
+        print("Using SQLite. Creating tables via SQLAlchemy metadata instead of Alembic.")
+        Base.metadata.create_all(bind=engine)
+        return
+
     alembic_cfg = Config("alembic.ini")
     
     inspector = inspect(engine)

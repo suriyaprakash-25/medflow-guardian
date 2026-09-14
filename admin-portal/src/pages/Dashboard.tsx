@@ -5,11 +5,7 @@ import { Button } from '@shared/ui/Button';
 import { FeedbackState } from '@shared/ui/FeedbackState';
 import { api } from '../lib/api';
 
-const PieChart = React.lazy(() => import('recharts').then(module => ({ default: module.PieChart })));
-const Pie = React.lazy(() => import('recharts').then(module => ({ default: module.Pie })));
-const Cell = React.lazy(() => import('recharts').then(module => ({ default: module.Cell })));
-const ResponsiveContainer = React.lazy(() => import('recharts').then(module => ({ default: module.ResponsiveContainer })));
-const Tooltip = React.lazy(() => import('recharts').then(module => ({ default: module.Tooltip })));
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 
 interface DashboardMetricData {
   metrics: {
