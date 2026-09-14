@@ -2,6 +2,36 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
 
+function vendorChunk(id: string) {
+  const moduleId = id.replaceAll('\\', '/')
+  if (!moduleId.includes('/node_modules/')) return undefined
+
+  if (
+    moduleId.includes('/react/') ||
+    moduleId.includes('/react-dom/') ||
+    moduleId.includes('/react-router') ||
+    moduleId.includes('/scheduler/')
+  ) {
+    return 'react-vendor'
+  }
+
+  if (
+    moduleId.includes('/recharts/') ||
+    moduleId.includes('/d3-') ||
+    moduleId.includes('/victory-vendor/') ||
+    moduleId.includes('/decimal.js-light/') ||
+    moduleId.includes('/react-is/')
+  ) {
+    return 'charts-vendor'
+  }
+
+  if (moduleId.includes('/lucide-react/')) return 'icons-vendor'
+  if (moduleId.includes('/axios/')) return 'http-vendor'
+  if (moduleId.includes('/react-hot-toast/')) return 'toast-vendor'
+
+  return undefined
+}
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
@@ -11,6 +41,13 @@ export default defineConfig({
       'react/jsx-runtime': path.resolve(import.meta.dirname, 'node_modules/react/jsx-runtime.js'),
     },
     dedupe: ['react', 'react-dom'],
+  },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: vendorChunk,
+      },
+    },
   },
   server: {
     port: 5174,
