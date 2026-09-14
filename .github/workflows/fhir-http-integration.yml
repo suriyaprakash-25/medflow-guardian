@@ -1,0 +1,72 @@
+name: FHIR HTTP integration
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: medflow
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: medflow_fhir
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U medflow -d medflow_fhir"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    env:
+      TESTING: "True"
+      ENV: test
+      DATABASE_URL: postgresql://medflow:password@127.0.0.1:5432/medflow_fhir
+      SECRET_KEY: p1_fhir_http_test_secret
+      SUPABASE_URL: http://127.0.0.1:8000
+      SUPABASE_SERVICE_ROLE_KEY: dummy_key
+      SUPABASE_STORAGE_BUCKET: medflow-bucket
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-java@dded0888837ed1f317902acf8a20df0ad188d165
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Install
+        run: pip install -r backend/requirements.txt
+      - name: Provision and seed
+        run: |
+          cd backend
+          python -m scripts.provision_test_roles
+          python -m scripts.seed
+      - name: Start API
+        run: (cd backend && uvicorn app.main:app --host 127.0.0.1 --port 8080 > "$RUNNER_TEMP/fhir-api.log" 2>&1 &)
+      - name: Wait for API
+        run: python scripts/wait_for_http.py http://127.0.0.1:8080/ready
+      - name: Exercise authenticated FHIR API
+        run: cd backend && python -m scripts.fhir_http_integration
+      - name: Validate with official HL7 CLI
+        run: |
+          cd backend
+          python -m scripts.validate_fhir_external build/fhir-http-integration/capability-statement-http.json build/fhir-http-integration/patient-export-http.json
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08
+        with:
+          name: fhir-http-integration-evidence
+          path: |
+            backend/build/fhir-http-integration/
+            backend/build/fhir-validation/
+            ${{ runner.temp }}/fhir-api.log
+          if-no-files-found: warn
