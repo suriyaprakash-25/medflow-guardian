@@ -67,7 +67,7 @@ def create_fixture_data(db):
         document_type="lab_report",
         title="Golden Lab Report",
         original_filename="golden.pdf",
-        stored_filename=f"golden_{patient.id}_{doctor.id}.pdf",
+        stored_filename=f"patient/{patient.id}/golden_{patient.id}_{doctor.id}.pdf",
         mime_type="application/pdf",
         file_size=2048,
         scan_status="clean",
