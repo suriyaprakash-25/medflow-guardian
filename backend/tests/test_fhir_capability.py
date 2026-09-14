@@ -16,7 +16,9 @@ def test_capability_statement_is_public_r4_and_does_not_overclaim_crud():
     assert payload["fhirVersion"] == "4.0.1"
     assert payload["kind"] == "instance"
     assert payload["rest"][0]["mode"] == "server"
-    assert {item["type"] for item in payload["rest"][0]["resource"]} == {
+
+    resources = {item["type"]: item for item in payload["rest"][0]["resource"]}
+    assert set(resources) == {
         "Bundle",
         "Patient",
         "Practitioner",
@@ -25,8 +27,18 @@ def test_capability_statement_is_public_r4_and_does_not_overclaim_crud():
         "MedicationRequest",
         "Observation",
         "DocumentReference",
+        "Binary",
     }
-    assert all("interaction" not in item for item in payload["rest"][0]["resource"])
+
+    # The general export resources are representation declarations rather than a
+    # claim of standalone CRUD support. Binary is the one explicitly implemented
+    # FHIR resource read endpoint and must remain read-only.
+    assert all(
+        "interaction" not in item
+        for resource_type, item in resources.items()
+        if resource_type != "Binary"
+    )
+    assert resources["Binary"]["interaction"] == [{"code": "read"}]
 
 
 def test_capability_builder_uses_runtime_base_url():
