@@ -1,6 +1,10 @@
 import axios from 'axios';
 import { toast } from 'react-hot-toast';
 
+// In local development, use same-origin requests so Vite can proxy /api to the
+// backend. Production builds receive an explicit backend URL from Render via
+// VITE_API_BASE_URL. Do not hardcode a localhost port here: doing so bypasses
+// the dev proxy and makes the browser call the wrong service directly.
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '';
 const TOKEN_BRIDGE_KEY = '__medflowAdminAccessTokenBridge';
 
