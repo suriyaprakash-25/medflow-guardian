@@ -1,3 +1,5 @@
+import json
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -6,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.dependencies import get_authorization_service, get_current_user
 from app.core.database import get_db
+from app.models.audit import AuditLog
 from app.models.document import MedicalDocument
 from app.models.user import User
 from app.services.authorization import (
@@ -20,7 +23,54 @@ from app.services.malware import SCAN_CLEAN, SCAN_ERROR, SCAN_MALICIOUS, SCAN_PE
 from app.services.storage import storage_service
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
+
+
+def _binary_release_audit(
+    *,
+    current_user: User,
+    document: MedicalDocument,
+    allowed: bool,
+    purpose: Optional[str] = None,
+    consent_id: Optional[int] = None,
+    denial_reason: Optional[str] = None,
+) -> AuditLog:
+    """Build the durable release audit required for protected document bytes."""
+    return AuditLog(
+        actor_id=current_user.id,
+        actor_role=current_user.role,
+        organization_id=document.hospital_id,
+        patient_id=document.patient_id,
+        operation="download_release",
+        resource_type="document",
+        resource_id=str(document.id),
+        purpose=purpose,
+        consent_id=consent_id,
+        enforcement_point="fastapi-fhir-binary-pep",
+        decision="ALLOW" if allowed else "DENY",
+        denial_reason=denial_reason,
+        metadata_json=json.dumps(
+            {
+                "scan_status": document.scan_status,
+                "representation": "fhir_binary",
+            }
+        ),
+    )
+
+
+def _commit_binary_audit(db: Session, audit: AuditLog) -> None:
+    """Fail closed when the security audit cannot be durably persisted."""
+    try:
+        db.add(audit)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        logger.exception("FHIR Binary security audit persistence failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Security audit is temporarily unavailable; FHIR Binary release denied",
+        ) from exc
 
 
 @router.get("/interoperability/fhir/Binary/{document_id}")
@@ -77,6 +127,7 @@ def read_fhir_binary(
             detail=decision.detail,
         )
 
+    consent_id = trusted_grant.consent_id if trusted_grant else None
     if document.scan_status != SCAN_CLEAN:
         if document.scan_status == SCAN_MALICIOUS:
             detail = "FHIR Binary blocked: malware detected"
@@ -86,9 +137,61 @@ def read_fhir_binary(
             detail = "FHIR Binary remains quarantined because malware scanning failed"
         else:
             detail = "FHIR Binary remains quarantined because scan state is not releasable"
+        _commit_binary_audit(
+            db,
+            _binary_release_audit(
+                current_user=current_user,
+                document=document,
+                allowed=False,
+                purpose=purpose,
+                consent_id=consent_id,
+                denial_reason="malware_quarantine",
+            ),
+        )
         raise HTTPException(status_code=403, detail=detail)
 
-    file_bytes = storage_service.download_document(document.stored_filename)
+    try:
+        file_bytes = storage_service.download_document(document.stored_filename)
+    except HTTPException:
+        _commit_binary_audit(
+            db,
+            _binary_release_audit(
+                current_user=current_user,
+                document=document,
+                allowed=False,
+                purpose=purpose,
+                consent_id=consent_id,
+                denial_reason="storage_unavailable",
+            ),
+        )
+        raise
+    except Exception as exc:
+        _commit_binary_audit(
+            db,
+            _binary_release_audit(
+                current_user=current_user,
+                document=document,
+                allowed=False,
+                purpose=purpose,
+                consent_id=consent_id,
+                denial_reason="storage_unavailable",
+            ),
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Document storage is temporarily unavailable",
+        ) from exc
+
+    _commit_binary_audit(
+        db,
+        _binary_release_audit(
+            current_user=current_user,
+            document=document,
+            allowed=True,
+            purpose=purpose,
+            consent_id=consent_id,
+        ),
+    )
     return JSONResponse(
         to_fhir_binary(document, file_bytes),
         media_type="application/fhir+json",
