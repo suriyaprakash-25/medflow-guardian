@@ -20,6 +20,11 @@
   }
 }
 
+/* WCAG AA: Tailwind slate-500 is marginal on the slate-100 admin surfaces. */
+.text-slate-500 { color: #475569 !important; }
+.bg-slate-900 .text-slate-500,
+.bg-slate-950 .text-slate-500 { color: #cbd5e1 !important; }
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
