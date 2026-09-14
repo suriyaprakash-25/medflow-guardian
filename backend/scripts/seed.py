@@ -1,5 +1,6 @@
 import os
 import sys
+from pathlib import Path
 from sqlalchemy import inspect
 from alembic.config import Config
 from alembic import command
@@ -11,6 +12,7 @@ os.chdir(backend_dir)
 from app.core.database import SessionLocal, engine, Base
 from app.models.user import User
 from app.models.hospital import Hospital, HospitalStaff, Visit
+from app.models.document import MedicalDocument
 from app.core.security import get_password_hash
 
 def run_migrations():
@@ -117,6 +119,48 @@ def seed_data():
             db.add(Visit(patient_id=patient.id, hospital_id=h1.id, doctor_id=doctor1.id, status="completed", reason="Annual Checkup"))
             db.add(Visit(patient_id=patient.id, hospital_id=h2.id, doctor_id=doctor2.id, status="active", reason="Specialist Consult"))
             db.commit()
+
+        # UI validation needs one deterministic, releasable document so the
+        # browser can exercise the complete request -> approval -> download ->
+        # revoke -> deny workflow. Keep this fixture strictly TESTING-only and
+        # write the corresponding bytes to the same local private-storage layout
+        # used by StorageService; production/demo seeding remains unchanged.
+        if os.getenv("TESTING", "").strip().lower() == "true":
+            visit = db.query(Visit).filter(
+                Visit.patient_id == patient.id,
+                Visit.doctor_id == doctor1.id,
+                Visit.hospital_id == h1.id,
+            ).order_by(Visit.id.asc()).first()
+            if not visit:
+                raise RuntimeError("UI validation seed requires the primary doctor-patient visit")
+
+            fixture_bytes = b"MedFlow UI validation protected document fixture.\n"
+            storage_key = f"patient/{patient.id}/ui-validation-record.txt"
+            local_path = Path("local_storage") / "patient" / str(patient.id) / "ui-validation-record.txt"
+            local_path.parent.mkdir(parents=True, exist_ok=True)
+            local_path.write_bytes(fixture_bytes)
+
+            document = db.query(MedicalDocument).filter(
+                MedicalDocument.stored_filename == storage_key
+            ).first()
+            if not document:
+                db.add(MedicalDocument(
+                    patient_id=patient.id,
+                    hospital_id=h1.id,
+                    uploaded_by_doctor_id=doctor1.id,
+                    visit_id=visit.id,
+                    document_type="lab report",
+                    title="UI validation clinical record",
+                    description="Deterministic automated browser-test fixture",
+                    original_filename="ui-validation-record.txt",
+                    stored_filename=storage_key,
+                    mime_type="text/plain",
+                    file_size=len(fixture_bytes),
+                    scan_status="clean",
+                    status="active",
+                ))
+                db.commit()
+            print("Seeded TESTING-only clean document fixture.")
             
         print("Database seeded successfully.")
 
