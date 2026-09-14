@@ -8,10 +8,7 @@ import { FormField } from '@shared/ui/FormField';
 import { HeartPulse, MessageSquare, Send, PlusCircle, CheckCheck } from 'lucide-react';
 import React, { Suspense } from 'react';
 
-const LineChart = React.lazy(() => import('recharts').then(module => ({ default: module.LineChart })));
-const Line = React.lazy(() => import('recharts').then(module => ({ default: module.Line })));
-const ResponsiveContainer = React.lazy(() => import('recharts').then(module => ({ default: module.ResponsiveContainer })));
-const YAxis = React.lazy(() => import('recharts').then(module => ({ default: module.YAxis })));
+import { LineChart, Line, ResponsiveContainer, YAxis } from 'recharts';
 
 export default function DashboardView() {
   const {
