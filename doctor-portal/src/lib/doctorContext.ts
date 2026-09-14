@@ -1,105 +1,30 @@
 import type React from 'react';
 import { useOutletContext } from 'react-router-dom';
+import type {
+  AccessGrantContract,
+  AccessRequestContract,
+  AdminDashboardContract,
+  AuditLogContract,
+  AuthUserContract,
+  DocumentContract,
+  MessageContract,
+  NotificationContract,
+  TriageRequestContract,
+  VisitContract,
+  VitalReadingContract,
+} from '@shared/api/contracts';
 
-export interface TriageRequest {
-  id: number;
-  patient_id: number;
-  symptoms: string;
-  status: string;
-  priority: string | null;
-  ai_reasoning: string | null;
-  disclaimer: string | null;
-  created_at: string;
-}
-
-export interface Message {
-  id: number;
-  sender_id: number;
-  receiver_id: number;
-  content: string;
-  created_at: string;
-}
-
-export interface VitalReading {
-  id: number;
-  patient_id: number;
-  heart_rate: number;
-  oxygen_level: number;
-  blood_pressure_sys: number;
-  blood_pressure_dia: number;
-  is_simulated: boolean;
-  created_at: string;
-}
-
-export interface DoctorMembership {
-  role: string;
-  hospital_id?: number;
-}
-
-export interface DoctorUser {
-  id: number;
-  email?: string;
-  full_name?: string;
-  role?: string;
-  system_role?: string;
-  memberships?: DoctorMembership[];
-}
-
-export interface DoctorVisit {
-  id: number;
-  patient_id: number;
-  doctor_id?: number;
-  hospital_id: number;
-  status: string;
-  reason?: string | null;
-  hospital?: { id?: number; name?: string };
-}
-
-export interface DocumentMetadata {
-  id: number;
-  patient_id?: number;
-  hospital_id: number;
-  title: string;
-  document_type: string;
-  original_filename: string;
-}
-
-export interface AccessRequestItem {
-  id: number;
-  patient_id: number;
-  status: string;
-  reason: string;
-}
-
-export interface AccessGrantItem {
-  id: number;
-  patient_id: number;
-  status: string;
-  expires_at: string;
-  granted_documents: DocumentMetadata[];
-}
-
-export interface DoctorNotification {
-  id: number;
-  is_read: boolean;
-  message: string;
-  created_at: string;
-}
-
-export interface DoctorAuditLog {
-  id: number;
-  operation: string;
-  timestamp: string;
-  target_user_id?: number | null;
-  document_id?: number | null;
-}
-
-export interface AdminDashboardData {
-  total_users: number;
-  total_hospitals: number;
-  total_triage_requests: number;
-  active_grants: number;
-}
+export type TriageRequest = TriageRequestContract & { patient_id: number };
+export type Message = MessageContract;
+export type VitalReading = VitalReadingContract;
+export type DoctorUser = AuthUserContract;
+export type DoctorVisit = VisitContract;
+export type DocumentMetadata = DocumentContract;
+export type AccessRequestItem = AccessRequestContract;
+export type AccessGrantItem = AccessGrantContract & { granted_documents: DocumentContract[] };
+export type DoctorNotification = NotificationContract;
+export type DoctorAuditLog = AuditLogContract;
+export type AdminDashboardData = AdminDashboardContract;
 
 export interface DoctorOutletContext {
   isAdmin: boolean;

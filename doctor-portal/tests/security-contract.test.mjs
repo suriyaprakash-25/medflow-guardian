@@ -25,3 +25,16 @@ test('protected routes bootstrap authenticated state through ensureSession', () 
   assert.match(source, /authorized === null/);
   assert.match(source, /Navigate to="\/login"/);
 });
+
+test('clinician portal consumes shared API contracts', () => {
+  assert.match(read('src/lib/doctorContext.ts'), /@shared\/api\/contracts/);
+  assert.match(read('src/pages/Login.tsx'), /LoginResponseContract/);
+});
+
+test('FHIR export never asks the clinician for a consent ID', () => {
+  const source = read('src/pages/PatientDetails.tsx');
+  assert.doesNotMatch(source, /window\.prompt/);
+  assert.doesNotMatch(source, /consent_id/);
+  assert.match(source, /hospital_id/);
+  assert.match(source, /purpose:\s*'TREATMENT'/);
+});

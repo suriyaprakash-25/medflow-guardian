@@ -30,15 +30,35 @@ def fetch(url: str, *, token: str | None = None) -> tuple[int, dict[str, str], b
         return exc.code, {k.lower(): v for k, v in exc.headers.items()}, exc.read()
 
 
-def check_json(url: str, expected: dict[str, str]) -> None:
-    status, headers, body = fetch(url)
-    if status != 200 or json.loads(body) != expected:
-        raise AssertionError(f"{url} failed: HTTP {status}")
+def assert_security_headers(url: str, headers: dict[str, str]) -> None:
     for name, value in SECURITY_HEADERS.items():
         if value.lower() not in headers.get(name, "").lower():
             raise AssertionError(f"{url} missing required {name}")
     if "x-request-id" not in headers:
         raise AssertionError(f"{url} missing X-Request-ID")
+
+
+def check_json(url: str, expected: dict[str, str]) -> None:
+    status, headers, body = fetch(url)
+    if status != 200 or json.loads(body) != expected:
+        raise AssertionError(f"{url} failed: HTTP {status}")
+    assert_security_headers(url, headers)
+
+
+def check_fhir_metadata(api_url: str) -> None:
+    url = f"{api_url}/api/interoperability/metadata"
+    status, headers, body = fetch(url)
+    if status != 200:
+        raise AssertionError(f"FHIR metadata failed: HTTP {status}")
+    payload = json.loads(body)
+    if payload.get("resourceType") != "CapabilityStatement":
+        raise AssertionError("FHIR metadata is not a CapabilityStatement")
+    if payload.get("fhirVersion") != "4.0.1":
+        raise AssertionError("FHIR metadata is not FHIR R4 (4.0.1)")
+    content_type = headers.get("content-type", "")
+    if "application/fhir+json" not in content_type:
+        raise AssertionError("FHIR metadata has incorrect media type")
+    assert_security_headers(url, headers)
 
 
 def main() -> int:
@@ -52,7 +72,10 @@ def main() -> int:
         raise AssertionError("Production API URL must use HTTPS")
 
     check_json(f"{api_url}/health", {"status": "ok"})
+    # In production /ready transitively proves DB connectivity, ClamAV PING/PONG,
+    # and that the configured Supabase bucket exists and is private.
     check_json(f"{api_url}/ready", {"status": "ready"})
+    check_fhir_metadata(api_url)
     for hidden_path in ("/docs", "/redoc", "/openapi.json", "/internal/metrics"):
         status, _, _ = fetch(f"{api_url}{hidden_path}")
         if status != 404:

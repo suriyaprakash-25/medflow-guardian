@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.api.dependencies import get_current_user
 from app.core.database import get_db
 from app.models.clinical import ClinicalNote, LabResult, Prescription
-from app.models.consent import Consent
 from app.models.document import MedicalDocument
 from app.models.hospital import Hospital
 from app.models.user import User
@@ -18,6 +17,7 @@ from app.services.authorization import (
     Operation,
     ResourceType,
 )
+from app.services.consent_context import resolve_active_scoped_consent
 from app.services.interoperability.fhir_consent import (
     FHIRConsentError,
     FHIRConsentImporter,
@@ -163,20 +163,35 @@ def export_patient_fhir_bundle(
         max_length=64,
         pattern=r"^[A-Z][A-Z0-9_]*$",
     ),
-    consent_id: Optional[int] = Query(None, gt=0),
+    hospital_id: Optional[int] = Query(None, gt=0),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ) -> Dict[str, Any]:
-    """Export the authorized patient record as a scoped FHIR R4 collection Bundle."""
+    """Export an authorized patient record as a scoped FHIR R4 Bundle.
+
+    Patient self-export remains consent-free. For practitioner export, the
+    browser supplies only the intended hospital scope and purpose. The backend
+    resolves the exact active patient+doctor+hospital consent and then passes it
+    into the existing CAE/ConsentService path. No client-supplied consent ID is
+    accepted as authorization authority.
+    """
     consent = None
-    if current_user.role == "doctor" and consent_id is not None:
-        consent = db.query(Consent).filter(Consent.id == consent_id).first()
-        # A practitioner export must have an organization boundary so one
-        # authorization decision cannot release records from other hospitals.
-        if consent is not None and consent.hospital_id is None:
+    if current_user.role == "doctor":
+        if hospital_id is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Practitioner FHIR export requires hospital_id scope",
+            )
+        consent = resolve_active_scoped_consent(
+            db,
+            patient_id=patient_id,
+            doctor_id=current_user.id,
+            hospital_id=hospital_id,
+        )
+        if consent is None:
             raise HTTPException(
                 status_code=403,
-                detail="Practitioner FHIR export requires organization-scoped consent",
+                detail="No active consent is scoped to this patient, practitioner, and hospital",
             )
 
     ctx = AuthorizationContext(
@@ -188,7 +203,7 @@ def export_patient_fhir_bundle(
         hospital_id=consent.hospital_id if consent else None,
         relationship_context=consent,
         purpose=purpose,
-        consent_id=consent_id,
+        consent_id=consent.id if consent else None,
     )
     decision = AuthorizationService(db).authorize(ctx)
     if not decision.allowed:

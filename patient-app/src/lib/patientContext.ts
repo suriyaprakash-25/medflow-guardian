@@ -1,35 +1,21 @@
 import type React from 'react';
 import { useOutletContext } from 'react-router-dom';
+import type {
+  AccessGrantContract,
+  AccessRequestContract,
+  AuditLogContract,
+  AuthUserContract,
+  DocumentContract,
+  MessageContract,
+  NotificationContract,
+  TriageRequestContract,
+  VisitContract,
+  VitalReadingContract,
+} from '@shared/api/contracts';
 
-export interface TriageRequest {
-  id: number;
-  symptoms: string;
-  status: string;
-  priority: string | null;
-  ai_reasoning: string | null;
-  disclaimer: string | null;
-  created_at: string;
-  hospital_id?: number;
-}
-
-export interface Message {
-  id: number;
-  sender_id: number;
-  receiver_id: number;
-  content: string;
-  created_at: string;
-}
-
-export interface Reading {
-  id: number;
-  patient_id: number;
-  heart_rate: number;
-  oxygen_level: number;
-  blood_pressure_sys: number;
-  blood_pressure_dia: number;
-  is_simulated: boolean;
-  created_at: string;
-}
+export type TriageRequest = TriageRequestContract;
+export type Message = MessageContract;
+export type Reading = VitalReadingContract;
 
 export interface PatientOutletContext {
   requests: TriageRequest[];
@@ -53,29 +39,29 @@ export interface PatientOutletContext {
   activeDoctorId: number | null;
   setActiveDoctorId: (value: number | null) => void;
 
-  patientVisits: any[];
-  documents: any[];
+  patientVisits: VisitContract[];
+  documents: DocumentContract[];
   docFilterHospital: string;
   setDocFilterHospital: (value: string) => void;
   docFilterType: string;
   setDocFilterType: (value: string) => void;
   handleDownload: (documentId: number, filename: string) => Promise<void>;
 
-  accessRequests: any[];
-  accessGrants: any[];
+  accessRequests: AccessRequestContract[];
+  accessGrants: AccessGrantContract[];
   durations: Record<number, number>;
   setDurations: (value: Record<number, number>) => void;
-  handleApproveAccess: (request: any) => Promise<void>;
+  handleApproveAccess: (request: AccessRequestContract) => Promise<void>;
   handleRejectAccess: (requestId: number) => Promise<void>;
   handleRevokeGrant: (grantId: number) => Promise<void>;
 
-  notifications: any[];
-  auditLogs: any[];
+  notifications: NotificationContract[];
+  auditLogs: AuditLogContract[];
   handleMarkRead: (id: number) => Promise<void>;
   handleMarkAllRead: () => Promise<void>;
 
-  patientProfile: any;
-  setPatientProfile: (value: any) => void;
+  patientProfile: AuthUserContract | null;
+  setPatientProfile: (value: AuthUserContract | null) => void;
 }
 
 export function usePatientContext() {

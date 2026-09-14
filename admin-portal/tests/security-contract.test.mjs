@@ -35,3 +35,10 @@ test('protected routes bootstrap authenticated state through ensureSession', () 
   assert.match(source, /authorized === null/);
   assert.match(source, /Navigate to="\/login"/);
 });
+
+test('admin portal consumes shared API contracts', () => {
+  const source = read('src/pages/Login.tsx');
+  assert.match(source, /@shared\/api\/contracts/);
+  assert.match(source, /AuthUserContract/);
+  assert.match(source, /LoginResponseContract/);
+});
