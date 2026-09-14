@@ -28,7 +28,7 @@ type Consent = {
   active_policy?: Policy | null;
 };
 
-const OPERATIONS = ['read', 'download', 'share'];
+const OPERATIONS = ['read', 'download', 'share', 'list', 'create'];
 const TRANSITIONS: Record<string, string[]> = {
   active: ['suspended', 'revoked', 'expired'],
   suspended: ['active', 'revoked'],
@@ -51,7 +51,7 @@ export default function Consents() {
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [purpose, setPurpose] = useState('TREATMENT');
-  const [operations, setOperations] = useState<string[]>(['read', 'download']);
+  const [operations, setOperations] = useState<string[]>(['read', 'download', 'list', 'create']);
   const [doctorId, setDoctorId] = useState('');
   const [hospitalId, setHospitalId] = useState('');
   const [validFrom, setValidFrom] = useState('');
@@ -79,7 +79,7 @@ export default function Consents() {
   const reset = () => {
     setEditingId(null);
     setPurpose('TREATMENT');
-    setOperations(['read', 'download']);
+    setOperations(['read', 'download', 'list', 'create']);
     setDoctorId('');
     setHospitalId('');
     setValidFrom('');
@@ -131,7 +131,7 @@ export default function Consents() {
     const policy = consent.active_policy;
     setEditingId(consent.id);
     setPurpose((policy?.policy_payload.allowed_purposes || ['TREATMENT']).join(', '));
-    setOperations(policy?.policy_payload.allowed_operations || ['read']);
+    setOperations(policy?.policy_payload.allowed_operations || ['read', 'list']);
     setValidFrom(policy?.valid_from ? policy.valid_from.slice(0, 16) : '');
     setValidUntil(policy?.valid_until ? policy.valid_until.slice(0, 16) : '');
     window.scrollTo({ top: 0, behavior: 'smooth' });

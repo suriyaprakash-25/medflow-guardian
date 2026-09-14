@@ -139,8 +139,8 @@ def inject_data():
                 consent_id=consent.id,
                 version_number=1,
                 policy_payload={
-                    "allowed_purposes": ["treatment"],
-                    "allowed_operations": ["read", "download"],
+                    "allowed_purposes": ["TREATMENT"],
+                    "allowed_operations": ["read", "download", "list", "create"],
                 },
                 status="active",
             )
