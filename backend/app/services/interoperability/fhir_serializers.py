@@ -250,20 +250,15 @@ def to_fhir_document_reference_note(note: ClinicalNote) -> Dict[str, Any]:
 def to_fhir_document_reference_file(doc: MedicalDocument) -> Dict[str, Any]:
     """Serialize protected document metadata without exposing storage internals.
 
-    The private Supabase object key is intentionally not exported as an
-    Attachment.url. Binary release must continue through MedFlow's authorized
-    download path rather than bypassing the PDP/PEP boundary.
+    The stable DocumentReference.id carries MedFlow's document identity. The
+    private storage object key and any non-standard attachment URL/extension are
+    intentionally omitted. Binary release must continue through MedFlow's
+    separately authorized download path rather than bypassing the PDP/PEP.
     """
     attachment: Dict[str, Any] = {
         "contentType": doc.mime_type,
         "title": doc.original_filename,
         "size": doc.file_size,
-        "extension": [
-            {
-                "url": "https://medflowguardian.example/fhir/StructureDefinition/protected-document-id",
-                "valueInteger": doc.id,
-            }
-        ],
     }
     resource: Dict[str, Any] = {
         "resourceType": "DocumentReference",
