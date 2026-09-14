@@ -25,3 +25,8 @@ test('protected routes bootstrap authenticated state through ensureSession', () 
   assert.match(source, /authorized === null/);
   assert.match(source, /Navigate to="\/login"/);
 });
+
+test('patient portal consumes shared API contracts', () => {
+  assert.match(read('src/lib/patientContext.ts'), /@shared\/api\/contracts/);
+  assert.match(read('src/pages/Login.tsx'), /LoginResponseContract/);
+});
