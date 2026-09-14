@@ -17,13 +17,39 @@ export interface MembershipContract {
   hospital?: HospitalSummary;
 }
 
+export interface PatientProfileDetailsContract {
+  id: number;
+  user_id: number;
+  medical_history?: string | null;
+  date_of_birth?: string | null;
+  address?: string | null;
+  emergency_contact_name?: string | null;
+  emergency_contact_phone?: string | null;
+  blood_type?: string | null;
+  allergies?: string | null;
+  assigned_doctor_id?: number | null;
+}
+
+export interface PractitionerProfileContract {
+  id: number;
+  user_id: number;
+  specialty?: string | null;
+  license_number?: string | null;
+  bio?: string | null;
+  is_verified: boolean;
+}
+
 export interface AuthUserContract {
   id: number;
   email?: string;
-  full_name?: string;
+  full_name?: string | null;
+  phone_number?: string | null;
   role?: string;
   system_role?: SystemRole;
+  is_active?: boolean;
   memberships?: MembershipContract[];
+  patient_profile?: PatientProfileDetailsContract | null;
+  practitioner_profile?: PractitionerProfileContract | null;
 }
 
 export interface LoginResponseContract {
