@@ -13,8 +13,8 @@ test.describe('patient journey', () => {
 
     await page.goto(`${portals.patient.baseUrl}/profile`);
     await expect(page.getByRole('heading', { name: /patient identity|demo patient/i }).first()).toBeVisible();
-    await expect(page.getByRole('tab', { name: /profile settings/i })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /triage history/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /profile settings/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /triage history/i })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 });
@@ -22,7 +22,7 @@ test.describe('patient journey', () => {
 test.describe('doctor journey', () => {
   test('clinician can move through triage, patient, access, and upload workspaces', async ({ page }) => {
     await signIn(page, 'doctor');
-    await expect(page.getByText(/automated screening support/i)).toBeVisible();
+    await expect(page.getByText(/triage priority is decision support, not a diagnosis/i)).toBeVisible();
     await expectNoHorizontalOverflow(page);
 
     await page.goto(`${portals.doctor.baseUrl}/patients`);
@@ -51,6 +51,7 @@ test.describe('admin journey', () => {
     await page.goto(`${portals.admin.baseUrl}/staff`);
     await expect(page.getByRole('heading', { name: /staff directory/i })).toBeVisible();
     await expect(page.getByLabel(/search staff/i)).toBeVisible();
+    await expectNoHorizontalOverflow(page);
 
     await page.goto(`${portals.admin.baseUrl}/audit`);
     await expect(page.getByRole('heading', { name: /audit/i }).first()).toBeVisible();
