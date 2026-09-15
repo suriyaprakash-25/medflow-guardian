@@ -84,14 +84,17 @@ export default function Dashboard() {
     { label: isPlatformAdmin ? 'Patient accounts' : 'Patients with visits', value: data.metrics.total_patients, icon: ActivitySquare, description: isPlatformAdmin ? 'Patient accounts across the platform.' : 'Distinct patients with a visit in this organization.' },
   ];
 
-  const filteredActivity = data.recent_activity.filter(log => filter === 'ALL' || log.decision === filter);
+  const filteredActivity = useMemo(() => data.recent_activity.filter(log => filter === 'ALL' || log.decision === filter), [data.recent_activity, filter]);
   
-  const allowCount = data.recent_activity.filter(a => a.decision === 'ALLOW').length;
-  const denyCount = data.recent_activity.filter(a => a.decision === 'DENY').length;
-  const healthData = [
-    { name: 'Allowed', value: allowCount, color: '#10b981' },
-    { name: 'Denied', value: denyCount, color: '#f43f5e' }
-  ];
+  const allowCount = useMemo(() => data.recent_activity.filter(a => a.decision === 'ALLOW').length, [data.recent_activity]);
+  const denyCount = useMemo(() => data.recent_activity.filter(a => a.decision === 'DENY').length, [data.recent_activity]);
+  
+  const healthData = useMemo(() => {
+    return [
+      { name: 'Allowed', value: allowCount, color: '#10b981' },
+      { name: 'Denied', value: denyCount, color: '#f43f5e' }
+    ];
+  }, [allowCount, denyCount]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-300">

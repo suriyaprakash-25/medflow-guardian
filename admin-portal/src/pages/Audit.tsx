@@ -89,13 +89,13 @@ export default function Audit() {
     queueMicrotask(() => { void fetchLogs(); });
   }, [fetchLogs]);
 
-  const filteredLogs = logs.filter((log) => {
+  const filteredLogs = useMemo(() => logs.filter((log) => {
     if (decisionFilter !== 'all' && log.decision !== decisionFilter) return false;
     const query = searchTerm.trim().toLowerCase();
     if (!query) return true;
     return [log.operation, log.resource_type, log.actor_role, log.actor_id, log.resource_id, log.denial_reason, log.purpose, log.request_id, log.correlation_id]
       .some((value) => value !== null && value !== undefined && String(value).toLowerCase().includes(query));
-  });
+  }), [logs, decisionFilter, searchTerm]);
 
   const exportLoadedCsv = () => {
     const headers = ['id', 'timestamp', 'decision', 'operation', 'resource_type', 'resource_id', 'actor_role', 'actor_id', 'organization_id', 'patient_id', 'purpose', 'denial_reason', 'authorization_id', 'consent_id', 'consent_state_id', 'policy_version', 'enforcement_point'];

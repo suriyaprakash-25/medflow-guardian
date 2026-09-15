@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../../frontend-shared/global.css";
 @source "../../frontend-shared";
 
 @theme {

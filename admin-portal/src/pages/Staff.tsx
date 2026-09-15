@@ -160,13 +160,13 @@ export default function Staff() {
     }
   };
 
-  const filteredStaff = staff.filter((member) => {
+  const filteredStaff = useMemo(() => staff.filter((member) => {
     const query = searchTerm.trim().toLowerCase();
     if (!query) return true;
     return (member.full_name || '').toLowerCase().includes(query)
       || member.email.toLowerCase().includes(query)
       || member.role.toLowerCase().includes(query);
-  });
+  }), [staff, searchTerm]);
 
   const selectedOrganization = organizations.find((organization) => String(organization.id) === String(orgId));
   const organizationLabel = selectedOrganization?.name || user.memberships?.[0]?.hospital_name || (orgId ? `Organization ${orgId}` : '');

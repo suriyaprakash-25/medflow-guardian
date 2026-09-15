@@ -1,13 +1,16 @@
 # MedFlow Guardian
 
-**MedFlow Guardian** is a prototype hospital monitoring application and patient-controlled medical record platform.
+**MedFlow Guardian** is a hospital monitoring application and patient-controlled medical record platform.
 
-**Disclaimer:** This is a verified prototype for demonstration. We do not claim real hospital integration, real medical-device integration, trained medical AI, or actual regulatory (HIPAA/GDPR) compliance. 
+**Disclaimer:** This is a verified platform for demonstration. We do not claim real hospital integration, real medical-device integration, trained medical AI, or actual regulatory (HIPAA/GDPR) compliance. 
 
 ## Architecture
-- **Backend**: FastAPI (Python 3.11), SQLite, Uvicorn, WebSockets.
+- **Backend**: FastAPI (Python 3.11), PostgreSQL (via Supabase), Uvicorn, WebSockets.
+- **Storage**: Supabase Storage for secure medical document persistence.
+- **Security**: Model A collocated PDP + PEP, ClamAV Malware Quarantine, FHIR Interoperability.
 - **Doctor Portal**: React/Vite (Port 5175).
 - **Patient App**: React/Vite (Port 5174).
+- **Admin Portal**: React/Vite (Port 5176).
 
 ## Main Workflows
 1. **Hospital A doctor uploads reports** for a patient.
@@ -25,25 +28,33 @@ cd backend
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install -r requirements.txt
-python -m uvicorn app.main:app --host 0.0.0.0 --port 8080
+alembic upgrade head
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
 ```
-*(A clean `medflow.db` database will automatically initialize and seed with demo accounts on startup).*
 
 ### 2. Patient App (port 5174)
 ```bash
 cd patient-app
-npm install
-npm run dev -- --port 5174
+npm ci
+npm run dev
 ```
 Navigate to: http://localhost:5174
 
 ### 3. Doctor Portal (port 5175)
 ```bash
 cd doctor-portal
-npm install
-npm run dev -- --port 5175
+npm ci
+npm run dev
 ```
 Navigate to: http://localhost:5175
+
+### 4. Admin Portal (port 5176)
+```bash
+cd admin-portal
+npm ci
+npm run dev
+```
+Navigate to: http://localhost:5176
 
 ## Pre-configured Demo Accounts
 Use password `password` for all accounts.
@@ -52,13 +63,6 @@ Use password `password` for all accounts.
 - **Doctor (Hospital B)**: `doctor2@demo.com`
 - **Admin**: `admin@demo.com`
 
-## Reset Instructions
-To completely reset the entire state of the application to a fresh install:
-1. Stop the backend server.
-2. Delete the `backend/medflow.db` SQLite file.
-3. Restart the backend server. The database will safely reseed.
-
 ## Known Limitations
-- The system uses SQLite without at-rest encryption.
 - Triage queues are globally visible to all doctors rather than siloed per hospital.
 - Hardcoded test documents are mocked via API integrations rather than actual EMR ingestion endpoints.

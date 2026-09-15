@@ -99,7 +99,7 @@ class DocumentAccessGrant(Base):
             name="ck_access_grants_status",
         ),
         CheckConstraint(
-            "consent_id IS NOT NULL",
+            "consent_id IS NOT NULL OR status = 'revoked'",
             name="ck_access_grants_consent_required",
         ),
         CheckConstraint(

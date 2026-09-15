@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useDoctorContext } from '../lib/doctorContext';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
@@ -41,16 +41,16 @@ export default function DashboardView() {
     );
   }
 
-  const criticalCount = requests.filter((request) => normalized(request.priority) === 'critical' && normalized(request.status) !== 'resolved').length;
-  const highCount = requests.filter((request) => normalized(request.priority) === 'high' && normalized(request.status) !== 'resolved').length;
-  const pendingCount = requests.filter((request) => normalized(request.status) === 'pending').length;
+  const criticalCount = useMemo(() => requests.filter((request) => normalized(request.priority) === 'critical' && normalized(request.status) !== 'resolved').length, [requests]);
+  const highCount = useMemo(() => requests.filter((request) => normalized(request.priority) === 'high' && normalized(request.status) !== 'resolved').length, [requests]);
+  const pendingCount = useMemo(() => requests.filter((request) => normalized(request.status) === 'pending').length, [requests]);
 
-  const filteredRequests = requests.filter((request) => {
+  const filteredRequests = useMemo(() => requests.filter((request) => {
     if (filter === 'critical') return normalized(request.priority) === 'critical';
     if (filter === 'high') return normalized(request.priority) === 'high';
     if (filter === 'pending') return normalized(request.status) === 'pending';
     return true;
-  });
+  }), [requests, filter]);
 
   const getPriorityBadge = (priority: string | null) => {
     switch (normalized(priority)) {

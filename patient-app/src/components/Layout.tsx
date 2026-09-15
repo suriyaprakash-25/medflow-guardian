@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import originalAxios from 'axios';
 import { api } from '../lib/api';
 import { createAuthenticatedWebSocket } from '../lib/websocket';
@@ -104,8 +104,19 @@ export default function Layout() {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const handleLogout = useCallback(async () => {
+    try {
+      await api.post('/api/auth/logout');
+    } catch (error) {
+      console.error('Failed to revoke server session during logout', error);
+    } finally {
+      localStorage.removeItem('token');
+      navigate('/login');
+    }
+  }, [navigate]);
+
   const token = localStorage.getItem('token');
-  const headers = { Authorization: `Bearer ${token}` };
+  const headers = useMemo(() => ({ Authorization: `Bearer ${token}` }), [token]);
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<any>(null);
 
@@ -120,7 +131,7 @@ export default function Layout() {
     } catch (error) {
       console.error(error);
     }
-  }, [token]);
+  }, [headers]);
 
   const fetchPatientVisits = useCallback(async () => {
     try {
@@ -132,7 +143,7 @@ export default function Layout() {
     } catch (error) {
       console.error(error);
     }
-  }, [token, activeDoctorId]);
+  }, [headers, activeDoctorId]);
 
   const fetchRequests = useCallback(async () => {
     try {
@@ -141,7 +152,7 @@ export default function Layout() {
     } catch (error) {
       if (originalAxios.isAxiosError(error) && error.response?.status === 401) handleLogout();
     }
-  }, [token]);
+  }, [headers, handleLogout]);
 
   const fetchMessages = useCallback(async () => {
     if (!activeDoctorId) return;
@@ -325,7 +336,7 @@ export default function Layout() {
     // If real hardware integration is added in Phase 8, it will be placed here.
   }, [vitalsOn, headers, fetchReadings]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     if (!selectedHospitalId) {
@@ -344,9 +355,9 @@ export default function Layout() {
     } finally {
       setSubmitting(false);
     }
-  };
+  }, [selectedHospitalId, symptoms, headers, fetchRequests]);
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const sendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activeDoctorId) return;
     try {
@@ -360,9 +371,9 @@ export default function Layout() {
       console.error(error);
       toast.error(error.message || 'Failed to send message');
     }
-  };
+  }, [chatInput, activeDoctorId, headers]);
 
-  const handleDownload = async (docId: number, filename: string) => {
+  const handleDownload = useCallback(async (docId: number, filename: string) => {
     try {
       const res = await api.get(`/api/documents/${docId}/download`, {
         headers, 
@@ -378,11 +389,11 @@ export default function Layout() {
     } catch (error) {
       toast.error('Failed to download document');
     }
-  };
+  }, [headers]);
 
   const [durations, setDurations] = useState<Record<number, number>>({});
 
-  const handleApproveAccess = async (req: any) => {
+  const handleApproveAccess = useCallback(async (req: any) => {
     const duration = durations[req.id] || 1;
     try {
       await api.post(`/api/access-requests/${req.id}/approve`, {
@@ -394,9 +405,9 @@ export default function Layout() {
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Approval failed');
     }
-  };
+  }, [durations, headers, fetchAccessData]);
 
-  const handleRejectAccess = async (reqId: number) => {
+  const handleRejectAccess = useCallback(async (reqId: number) => {
     try {
       await api.post(`/api/access-requests/${reqId}/reject`, {
         rejection_reason: 'Rejected by patient'
@@ -406,9 +417,9 @@ export default function Layout() {
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Rejection failed');
     }
-  };
+  }, [headers, fetchAccessData]);
 
-  const handleRevokeGrant = async (grantId: number) => {
+  const handleRevokeGrant = useCallback(async (grantId: number) => {
     try {
       await api.post(`/api/access-grants/${grantId}/revoke`, {}, { headers });
       toast.success('Access revoked successfully');
@@ -416,18 +427,18 @@ export default function Layout() {
     } catch (error: any) {
       toast.error(error.response?.data?.detail || 'Revocation failed');
     }
-  };
+  }, [headers, fetchAccessData]);
 
-  const handleMarkRead = async (id: number) => {
+  const handleMarkRead = useCallback(async (id: number) => {
     try {
       await api.post(`/api/notifications/${id}/read`, {}, { headers });
       fetchPhase4Data();
     } catch (error) {
       console.error(error);
     }
-  };
+  }, [headers, fetchPhase4Data]);
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllRead = useCallback(async () => {
     try {
       await api.post(`/api/notifications/read-all`, {}, { headers });
       fetchPhase4Data();
@@ -435,23 +446,12 @@ export default function Layout() {
     } catch (error) {
       console.error(error);
     }
-  };
-
-  const handleLogout = async () => {
-    try {
-      await api.post('/api/auth/logout');
-    } catch (error) {
-      console.error('Failed to revoke server session during logout', error);
-    } finally {
-      localStorage.removeItem('token');
-      navigate('/login');
-    }
-  };
+  }, [headers, fetchPhase4Data]);
 
   const unreadCount = notifications.filter(n => !n.is_read).length;
   const pendingRequestsCount = accessRequests.filter(r => r.status === 'pending').length;
 
-  const contextValue: OutletContextType = {
+  const contextValue: OutletContextType = useMemo(() => ({
     requests, fetchRequests, symptoms, setSymptoms, selectedHospitalId, setSelectedHospitalId, submitting, handleSubmit,
     messages, chatInput, setChatInput, sendMessage,
     readings, vitalsOn, setVitalsOn,
@@ -460,7 +460,16 @@ export default function Layout() {
     accessRequests, accessGrants, durations, setDurations, handleApproveAccess, handleRejectAccess, handleRevokeGrant,
     notifications, auditLogs, handleMarkRead, handleMarkAllRead,
     patientProfile, setPatientProfile
-  };
+  }), [
+    requests, fetchRequests, symptoms, selectedHospitalId, submitting, handleSubmit,
+    messages, chatInput, sendMessage,
+    readings, vitalsOn,
+    activeDoctorId,
+    patientVisits, documents, docFilterHospital, docFilterType, handleDownload,
+    accessRequests, accessGrants, durations, handleApproveAccess, handleRejectAccess, handleRevokeGrant,
+    notifications, auditLogs, handleMarkRead, handleMarkAllRead,
+    patientProfile
+  ]);
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden">
