@@ -9,7 +9,6 @@ services:
       url: docker.io/clamav/clamav:1.5.3
     plan: 1c-2g
     region: singapore
-    maxShutdownDelaySeconds: 60
     disk:
       name: clamav-signatures
       mountPath: /var/lib/clamav
