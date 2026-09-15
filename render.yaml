@@ -138,7 +138,7 @@ services:
   - type: web
     name: medflow-patient-app-prod
     runtime: static
-    buildCommand: "cd frontend-shared && npm ci && cd ../patient-app && npm ci && npm run build"
+    buildCommand: "cd frontend-shared && npm install && cd ../patient-app && npm install && npm run build"
     staticPublishPath: ./patient-app/dist
     autoDeployTrigger: checksPass
     envVars:
@@ -179,7 +179,7 @@ services:
   - type: web
     name: medflow-doctor-portal-prod
     runtime: static
-    buildCommand: "cd frontend-shared && npm ci && cd ../doctor-portal && npm ci && npm run build"
+    buildCommand: "cd frontend-shared && npm install && cd ../doctor-portal && npm install && npm run build"
     staticPublishPath: ./doctor-portal/dist
     autoDeployTrigger: checksPass
     envVars:
@@ -220,7 +220,7 @@ services:
   - type: web
     name: medflow-admin-portal-prod
     runtime: static
-    buildCommand: "cd frontend-shared && npm ci && cd ../admin-portal && npm ci && npm run build"
+    buildCommand: "cd frontend-shared && npm install && cd ../admin-portal && npm install && npm run build"
     staticPublishPath: ./admin-portal/dist
     autoDeployTrigger: checksPass
     envVars:
