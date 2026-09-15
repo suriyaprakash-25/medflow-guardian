@@ -487,16 +487,16 @@ export default function Layout() {
     });
   }, [isAdmin, fetchAdminData]);
 
-  const updateStatus = async (id: number, newStatus: string) => {
+  const updateStatus = useCallback(async (id: number, newStatus: string) => {
     try {
       await api.patch(`/api/triage/${id}/status`, { status: newStatus }, { headers });
       toast.success(`Triage request marked as ${newStatus}`);
     } catch {
       toast.error('Failed to update status.');
     }
-  };
+  }, [headers]);
 
-  const sendMessage = async (e: React.FormEvent) => {
+  const sendMessage = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!chatInput.trim() || !activePatientId) return;
     const activeVisit = doctorVisits.find((visit) => visit.patient_id === activePatientId);
@@ -518,9 +518,9 @@ export default function Layout() {
       const clientError = asClientError(error);
       toast.error(clientError.message || 'Failed to send message');
     }
-  };
+  }, [chatInput, activePatientId, doctorVisits, headers]);
 
-  const handleUpload = async (e: React.FormEvent) => {
+  const handleUpload = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadFile || !uploadVisitId) return;
 
@@ -546,9 +546,9 @@ export default function Layout() {
     } finally {
       setUploading(false);
     }
-  };
+  }, [uploadFile, uploadVisitId, uploadType, uploadTitle, uploadDesc, headers]);
 
-  const handleFetchPatientDocs = async () => {
+  const handleFetchPatientDocs = useCallback(async () => {
     if (!reqPatientId || !reqHospitalId) {
       toast.error('Enter both the patient ID and hospital ID before discovering documents.');
       return;
@@ -566,9 +566,9 @@ export default function Layout() {
     } finally {
       setFetchingDocs(false);
     }
-  };
+  }, [reqPatientId, reqHospitalId, headers]);
 
-  const handleRequestAccess = async (e: React.FormEvent) => {
+  const handleRequestAccess = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!reqHospitalId) {
       toast.error('Please specify your Hospital ID.');
@@ -593,9 +593,9 @@ export default function Layout() {
       const clientError = asClientError(error);
       toast.error(clientError.response?.data?.detail || clientError.message || 'Request failed');
     }
-  };
+  }, [reqPatientId, reqHospitalId, selectedDocs, reqReason, headers, fetchAccessData]);
 
-  const handleDownload = async (docId: number, filename: string) => {
+  const handleDownload = useCallback(async (docId: number, filename: string) => {
     try {
       const res = await api.get(`/api/documents/${docId}/download`, {
         headers,
@@ -618,18 +618,18 @@ export default function Layout() {
         toast.error(`Failed to download document. ${clientError.message || ''}`.trim());
       }
     }
-  };
+  }, [headers]);
 
-  const handleMarkRead = async (id: number) => {
+  const handleMarkRead = useCallback(async (id: number) => {
     try {
       await api.post(`/api/notifications/${id}/read`, {}, { headers });
       void fetchPhase4Data();
     } catch (error) {
       console.error(error);
     }
-  };
+  }, [headers, fetchPhase4Data]);
 
-  const handleMarkAllRead = async () => {
+  const handleMarkAllRead = useCallback(async () => {
     try {
       await api.post('/api/notifications/read-all', {}, { headers });
       void fetchPhase4Data();
@@ -637,11 +637,11 @@ export default function Layout() {
     } catch (error) {
       console.error(error);
     }
-  };
+  }, [headers, fetchPhase4Data]);
 
   const unreadCount = notifications.filter((notification) => !notification.is_read).length;
 
-  const contextValue: OutletContextType = {
+  const contextValue: OutletContextType = useMemo(() => ({
     isAdmin,
     adminData,
     currentUser,
@@ -689,7 +689,13 @@ export default function Layout() {
     auditLogs,
     handleMarkRead,
     handleMarkAllRead,
-  };
+  }), [
+    isAdmin, adminData, currentUser, requests, fetchQueue, updateStatus,
+    activePatientId, doctorVisits, messages, chatInput, sendMessage,
+    liveVitals, historicalReadings, uploadVisitId, uploadType, uploadTitle, uploadDesc, uploadFile, uploading, handleUpload,
+    reqPatientId, reqHospitalId, reqReason, availableDocs, selectedDocs, fetchingDocs, handleFetchPatientDocs, handleRequestAccess, handleDownload,
+    accessRequests, accessGrants, notifications, auditLogs, handleMarkRead, handleMarkAllRead
+  ]);
 
   const navItems = isAdmin
     ? [{ path: '/dashboard', label: 'Admin Dashboard', icon: Shield }]

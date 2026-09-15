@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useDoctorContext } from '../lib/doctorContext';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from '@shared/ui/Card';
@@ -20,11 +20,11 @@ export default function Patients() {
     navigate('/patient-details');
   };
 
-  const filteredVisits = doctorVisits.filter((visit) =>
+  const filteredVisits = useMemo(() => doctorVisits.filter((visit) =>
     visit.patient_id.toString().includes(searchTerm) ||
     (visit.hospital?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (visit.reason || '').toLowerCase().includes(searchTerm.toLowerCase()),
-  );
+  ), [doctorVisits, searchTerm]);
 
   return (
     <div className="space-y-6">

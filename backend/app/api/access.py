@@ -430,6 +430,7 @@ def revoke_grant(
     return {"message": "Access revoked successfully"}
 
 
+
 @router.get("/access-grants/patient", response_model=List[AccessGrantResponse])
 def get_patient_grants(
     db: Session = Depends(get_db),

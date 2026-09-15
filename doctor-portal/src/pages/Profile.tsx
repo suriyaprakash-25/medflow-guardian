@@ -148,9 +148,10 @@ export default function Profile() {
               ) : (
                 <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
                   {auditLogs.map(log => {
-                    const isWarning = log.operation.includes('unauthorized') || log.operation.includes('failed');
+                    const op = log.operation || 'unknown';
+                    const isWarning = op.includes('unauthorized') || op.includes('failed');
                     return (
-                      <div key={log.id} className="p-5 hover:bg-slate-50 transition-colors flex gap-4">
+                      <div key={log.id || Math.random()} className="p-5 hover:bg-slate-50 transition-colors flex gap-4">
                         <div className="mt-0.5 shrink-0">
                           {isWarning ? (
                             <div className="h-8 w-8 rounded-full bg-rose-100 flex items-center justify-center"><AlertCircle className="h-4 w-4 text-rose-600" /></div>
@@ -160,8 +161,8 @@ export default function Profile() {
                         </div>
                         <div className="flex-1 space-y-1">
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                            <div className="font-semibold text-sm text-slate-900 uppercase tracking-wide">{log.operation.replace(/_/g, ' ')}</div>
-                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 shrink-0"><Clock className="h-3 w-3" />{new Date(log.timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</div>
+                            <div className="font-semibold text-sm text-slate-900 uppercase tracking-wide">{op.replace(/_/g, ' ')}</div>
+                            <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 shrink-0"><Clock className="h-3 w-3" />{log.timestamp ? new Date(log.timestamp).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Unknown time'}</div>
                           </div>
                           <div className="flex flex-wrap gap-2 pt-1">
                             {log.target_user_id && <Badge variant="outline" className="bg-white text-xs font-medium text-slate-600 border-slate-200">Target User ID: {log.target_user_id}</Badge>}
