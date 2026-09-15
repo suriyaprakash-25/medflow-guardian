@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useMemo } from 'react';
 import { usePatientContext } from '../components/Layout';
 import { Card, CardHeader, CardTitle, CardContent } from '@shared/ui/Card';
 import { Button } from '@shared/ui/Button';
@@ -19,8 +19,10 @@ export default function DashboardView() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-  const latestReading = readings.length > 0 ? readings[readings.length - 1] : null;
-  const careTeams = Array.from(new Map(patientVisits.filter((visit) => visit.doctor_id).map((visit) => [visit.doctor_id, visit])).values());
+  const latestReading = useMemo(() => readings.length > 0 ? readings[readings.length - 1] : null, [readings]);
+  const careTeams = useMemo(() => Array.from(new Map(patientVisits.filter((visit) => visit.doctor_id).map((visit) => [visit.doctor_id, visit])).values()), [patientVisits]);
+  const hospitalsList = useMemo(() => Array.from(new Map(patientVisits.filter((visit) => visit.hospital).map((visit) => [visit.hospital.id, visit.hospital])).values()), [patientVisits]);
+  const chartData = useMemo(() => readings.slice().reverse(), [readings]);
 
   return (
     <div className="space-y-6">
@@ -43,7 +45,7 @@ export default function DashboardView() {
                   <FormField id="triage-hospital" label="Hospital or clinic" hint="Choose the organization that should receive this symptom report." required>
                     <Select id="triage-hospital" value={selectedHospitalId} onChange={(event) => setSelectedHospitalId(event.target.value)} required>
                       <option value="">Select a hospital or clinic</option>
-                      {Array.from(new Map(patientVisits.filter((visit) => visit.hospital).map((visit) => [visit.hospital.id, visit.hospital])).values()).map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
+                      {hospitalsList.map((hospital) => <option key={hospital.id} value={hospital.id}>{hospital.name}</option>)}
                     </Select>
                   </FormField>
                   <FormField id="triage-symptoms" label="Symptoms" hint="Describe what you are experiencing, when it started, and any important changes." required>
@@ -72,7 +74,7 @@ export default function DashboardView() {
                     <div className="h-24 w-full mt-4">
                       <Suspense fallback={<div className="h-full w-full flex items-center justify-center text-xs text-slate-400">Loading chart...</div>}>
                         <ResponsiveContainer width="100%" height="100%">
-                          <LineChart data={readings.slice().reverse()}>
+                          <LineChart data={chartData}>
                             <YAxis domain={['dataMin - 10', 'dataMax + 10']} hide />
                             <Line type="monotone" dataKey="heart_rate" stroke="#e11d48" strokeWidth={3} dot={false} isAnimationActive={true} />
                           </LineChart>
@@ -117,10 +119,10 @@ export default function DashboardView() {
             <div ref={messagesEndRef} />
           </CardContent>
           <div className="border-t border-slate-100 bg-white/80 backdrop-blur-md p-4 rounded-b-xl">
-            <form onSubmit={sendMessage} className="flex items-end gap-2 relative">
-              <div className="flex-1"><FormField id="message-input" label="Message"><input id="message-input" type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} placeholder="Type a secure message..." className="min-h-12 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 py-2 text-sm shadow-inner transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100" disabled={!activeDoctorId} /></FormField></div>
-              <Button type="submit" size="icon" aria-label="Send message" disabled={!activeDoctorId || !chatInput.trim()} className="rounded-full h-12 w-12 shadow-md hover:shadow-lg transition-all active:scale-95"><Send className="h-4 w-4" aria-hidden="true" /></Button>
-            </form>
+            <div className="flex items-end gap-2 relative">
+              <div className="flex-1"><FormField id="message-input" label="Message"><input id="message-input" type="text" value={chatInput} onChange={(event) => setChatInput(event.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && chatInput.trim()) { e.preventDefault(); sendMessage(e as any); } }} placeholder="Type a secure message..." className="min-h-12 w-full rounded-full border border-slate-200 bg-slate-50/50 px-5 py-2 text-sm shadow-inner transition-colors focus:bg-white focus-visible:ring-2 focus-visible:ring-blue-600 disabled:bg-slate-100" disabled={!activeDoctorId} /></FormField></div>
+              <Button type="button" onClick={sendMessage as any} size="icon" aria-label="Send message" disabled={!activeDoctorId || !chatInput.trim()} className="rounded-full h-12 w-12 shadow-md hover:shadow-lg transition-all active:scale-95"><Send className="h-4 w-4" aria-hidden="true" /></Button>
+            </div>
           </div>
         </Card>
       </div>

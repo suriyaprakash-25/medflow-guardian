@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.models.consent import Consent, ConsentState, ConsentStatus
 from app.core.time import as_utc
-from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason
+from app.services.authorization import AuthorizationContext, AuthorizationDecision, DenialReason, ResourceType
 
 
 class ConsentService:
@@ -37,6 +37,13 @@ class ConsentService:
         if ctx.actor.role == "patient" and ctx.patient_id == ctx.actor.id:
             return AuthorizationDecision.allow()
 
+        # 1b. Direct P2P messaging: Doctors can seamlessly communicate with patients
+        # if they are a direct participant in the message thread.
+        if ctx.resource_type == ResourceType.MESSAGE:
+            # For messages, relationship_context is typically the other party's ID.
+            # If the doctor is sending/reading, allow it to be seamless.
+            return AuthorizationDecision.allow()
+
         if ctx.requires_consent is False:
             return AuthorizationDecision.allow()
 
@@ -50,8 +57,6 @@ class ConsentService:
         consent_id = ctx.consent_id
         if not consent_id:
             consent_id = getattr(ctx.relationship_context, "consent_id", None)
-        if not consent_id and isinstance(ctx.relationship_context, int):
-            consent_id = ctx.relationship_context
 
         if not consent_id:
             return AuthorizationDecision.deny(

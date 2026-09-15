@@ -62,6 +62,11 @@ def get_doctor_visits(db: Session = Depends(get_db), current_doctor: User = Depe
     if not hospital_ids:
         return []
 
-    visits = db.query(Visit).filter(Visit.hospital_id.in_(hospital_ids)).all()
+    visits = (
+        db.query(Visit)
+        .filter(Visit.hospital_id.in_(hospital_ids))
+        .order_by(Visit.date.desc())
+        .all()
+    )
     return visits
 
