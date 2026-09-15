@@ -142,6 +142,8 @@ services:
     staticPublishPath: ./patient-app/dist
     autoDeployTrigger: checksPass
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: VITE_API_BASE_URL
         fromService:
           type: web
@@ -181,6 +183,8 @@ services:
     staticPublishPath: ./doctor-portal/dist
     autoDeployTrigger: checksPass
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: VITE_API_BASE_URL
         fromService:
           type: web
@@ -220,6 +224,8 @@ services:
     staticPublishPath: ./admin-portal/dist
     autoDeployTrigger: checksPass
     envVars:
+      - key: NODE_VERSION
+        value: "20"
       - key: VITE_API_BASE_URL
         fromService:
           type: web
