@@ -46,7 +46,7 @@ jobs:
             -T 3 -r zap-baseline.html -J zap-baseline.json
       - name: Upload production validation evidence
         if: always()
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v4.6.2
         with:
           name: production-validation-evidence
           path: ${{ runner.temp }}/zap/
