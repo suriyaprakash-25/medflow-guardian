@@ -8,4 +8,4 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
     "../frontend-shared/ui/**/*.{js,ts,jsx,tsx}"
   ],
-}
+};
