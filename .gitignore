@@ -1,6 +1,4 @@
 # Environments
-.env
-.env.local
 .env.*.local
 .venv/
 venv/
@@ -31,7 +29,6 @@ medflow.db
 Thumbs.db
 
 # IDE
-.vscode/
 .idea/
 
 # Testing
@@ -42,3 +39,4 @@ ui-tests/playwright-report/
 # Custom
 .agents/
 skills-lock.json
+config.bat
